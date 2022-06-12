@@ -1,1 +1,4 @@
 */.vscode
+node_modules
+data.db
+test.js
