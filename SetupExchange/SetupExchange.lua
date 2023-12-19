@@ -7,9 +7,33 @@ local endpoint = 'http://se.api.acstuff.ru'
 -- local endpoint = 'http://127.0.0.1:12016'
 local temporaryName = ac.getFolder(ac.FolderID.AppDataLocal)..'/Temp/ac-se-shared.ini'
 local temporaryBackupName = ac.getFolder(ac.FolderID.AppDataLocal)..'/Temp/ac-se-backup.ini'
-local userKey = ac.checksumSHA256('LB83XurHhTPhpmTc'..ac.uniqueMachineKey())
+local trackNames = {}
+
+do
+  local cfg = ac.INIConfig.load(ac.getFolder(ac.FolderID.ExtCfgSys)..'/data_track_params.ini', ac.INIFormat.Extended)
+  for k, v in pairs(cfg.sections) do
+    if v.NAME then
+      trackNames[k] = v.NAME[1]
+    end
+  end
+end
+
+---@type string
+local userKey
+
+ac.uniqueMachineKeyAsync(function (err, data)
+  if err then ac.error('Failed to get key: '..err) end
+  userKey = ac.checksumSHA256('LB83XurHhTPhpmTc'..data)
+end)
 
 local function rest(method, url, data, callback, errorHandler)
+  if not userKey then
+    setTimeout(function ()
+      rest(method, url, data, callback, errorHandler)
+    end, 4)
+    return
+  end
+
   if method == 'GET' and data then
     local f = true
     for k, v in pairs(data) do
@@ -21,13 +45,20 @@ local function rest(method, url, data, callback, errorHandler)
   if not callback then callback = function (response) ac.log('Successfully executed: '..url..', response: '..stringify(response)) end end
   if not errorHandler then errorHandler = function (err) ac.warn(err) end end
 
+  -- local start = os.preciseClock()
   web.request(method, endpoint..'/'..url, { ['Content-Type'] = 'application/json', ['X-User-Key'] = userKey }, method ~= 'GET' and json.encode(data) or nil, function (err, response)
-    if err then return errorHandler(err) end
+    -- ac.log('Request: %s, %.1f ms' % {endpoint..'/'..url, 1e3 * (os.preciseClock() - start)})
+    if err then
+      return errorHandler(tostring(err))
+    end
+
     if response.status >= 400 then
       local parsed = try(function ()
         return json.decode(response.body)
       end, function () end)
       if parsed and parsed.error then err = parsed.error else err = response.body end
+      err = tostring(err)
+      if err:sub(1, 7) == 'Error: ' then err = err:sub(8) end
       return errorHandler(err)
     end
 
@@ -37,13 +68,13 @@ local function rest(method, url, data, callback, errorHandler)
   end)
 end
 
-local limit = 20
+local limit = 80
 
 local function refreshGenList(url, params, callback, offset, resultList)
   if not offset then
     offset, resultList = 0, {}
   end
-  rest('GET', url, table.chain(params, {offset = offset}), function (response)
+  rest('GET', url, table.chain(params, {offset = offset, limit = limit}), function (response)
     for _, v in ipairs(response) do table.insert(resultList, v) end
     if #response >= limit then
       refreshGenList(url, params, callback, offset + #response, resultList)
@@ -190,7 +221,7 @@ local function getSetupTooltip(setupInfo)
             table.insert(custom, getItemDisplayName(k, v, spinners[k][2]))
           end
         end
-        custom = table.distinct(custom)
+        custom = table.distinct(table.filter(custom, function (item) return #item > 0 end))
         table.sort(custom)
         if #custom == 0 then
           setupTooltips[setupInfo.setupID] = 'No changes from default setup are detected.'
@@ -259,12 +290,24 @@ local function initialLoading()
   end)
 end
 
-local function removeSetup(id)
+local removingIDs = {}
+
+local function removeSetup(id, withUndo)
+  if removingIDs[id] then return end
+  removingIDs[id] = true
   rest('DELETE', 'setups/'..id, nil, function ()
-    ui.toast(ui.Icons.Warning, 'Shared setup removed')
+    ui.toast(ui.Icons.Delete, 'Shared setup removed', withUndo and function ()
+      rest('POST', 'setups-restore/'..id, nil, function ()
+        listOfSetups = nil
+      end, function (err)
+        ui.toast(ui.Icons.Warning, 'Failed to restore shared setup: '..err)
+      end)
+    end or nil)
     listOfSetups = nil
+    removingIDs[id] = nil
   end, function (err)
     ui.toast(ui.Icons.Warning, 'Failed to remove shared setup: '..err)
+    removingIDs[id] = nil
   end)
 end
 
@@ -276,6 +319,18 @@ local function removeComment(id)
     ui.toast(ui.Icons.Warning, 'Failed to remove comment: '..err)
   end)
 end
+
+local icons = ui.atlasIcons('res/icons.png', 4, 1, {
+  Like = {1, 1},
+  Dislike = {1, 2},
+  Comments = {1, 3},
+  Download = {1, 4},
+})
+
+local iconSize = vec2(10, 10)
+local iconAlign = vec2(0, 0.6)
+local iconLikeAlign = vec2(0, 0)
+local iconDislikeAlign = vec2(0, 1)
 
 local function shareSetup(name)
   ac.saveCurrentSetup(temporaryName)
@@ -298,7 +353,7 @@ end
 local function likeButtons(path, item, likedList, dislikedList, itemID, contextTable)
   local liked = table.contains(likedList, itemID)
   local disliked = table.contains(dislikedList, itemID)
-  if ui.button(string.format('Like (%d)', item.statLikes), liked and ui.ButtonFlags.Active or 0) then
+  if ui.button(string.format('     %d##likes', item.statLikes)) then
     if liked then
       item.statLikes = item.statLikes - 1
       table.removeItem(likedList, itemID)
@@ -313,9 +368,11 @@ local function likeButtons(path, item, likedList, dislikedList, itemID, contextT
       end
     end
   end
+  ui.addIcon(icons.Like, iconSize, iconLikeAlign, liked and rgbm.colors.lime or rgbm.colors.white)
+  if ui.itemHovered() then ui.setTooltip(string.format('Likes: %d', item.statLikes)) end
 
   ui.sameLine(0, 4)
-  if ui.button(string.format('Dislike (%d)', item.statDislikes), disliked and ui.ButtonFlags.Active or 0) then
+  if ui.button(string.format('     %d##dislikes', item.statDislikes)) then
     if disliked then
       item.statDislikes = item.statDislikes - 1
       table.removeItem(dislikedList, itemID)
@@ -330,6 +387,8 @@ local function likeButtons(path, item, likedList, dislikedList, itemID, contextT
       end
     end
   end
+  ui.addIcon(icons.Dislike, iconSize, iconDislikeAlign, disliked and rgbm.colors.red or rgbm.colors.white)
+  if ui.itemHovered() then ui.setTooltip(string.format('Dislikes: %d', item.statDislikes)) end
 end
 
 function script.windowMainSettings()
@@ -340,12 +399,14 @@ end
 
 local function windowGeneric()
   if discussingItem then
-    if ui.button('← Back') then
+    if ui.button('    Back') then
       discussingItem = nil
       listOfComments = nil
       listOfCommentsPrev = nil
       return
     end
+    ui.addIcon(ui.Icons.ArrowLeft, iconSize, iconAlign, rgbm.colors.white)
+
     local item = discussingItem
     local comment = discussingComments[item.setupID] or ''
     ui.sameLine()
@@ -353,7 +414,8 @@ local function windowGeneric()
 
     local comments = refreshComments()
     if not comments then
-      ui.text('Loading list of comments…')
+      ui.drawLoadingSpinner(ui.windowSize() / 2 - 20, ui.windowSize() / 2 + 20)
+      -- ui.text('Loading list of comments…')
       return
     end
 
@@ -363,12 +425,14 @@ local function windowGeneric()
       return
     end
 
-    ui.childWindow('commentsScroll', ui.availableSpace() - vec2(0, 40), function ()
+    ui.childWindow('commentsScroll', ui.availableSpace():sub(vec2(0, 40)), function ()
       ui.offsetCursorY(8)
       for _, v in ipairs(comments) do
         if ui.areaVisible(commentSize) then
           local y = ui.getCursorY()
           ui.pushID(v.commentID)
+          local disliked = v.statDislikes > v.statLikes + 1
+          if disliked then ui.pushStyleVarAlpha(0.5) end
           ui.pushFont(ui.Font.Small)
           if v.userID == ownUserID then ui.pushStyleColor(ui.StyleColor.Text, ownColor) end
           ui.text(v.userName)
@@ -380,22 +444,25 @@ local function windowGeneric()
           ui.text(v.data)
 
           ui.pushFont(ui.Font.Small)
-          if ui.button('Reply') then
+          if ui.button('     Reply') then
             comment = '@'..v.userName..' '..comment
           end
+          ui.addIcon(ui.Icons.Undo, iconSize, iconAlign)
 
           ui.sameLine(0, 4)
           likeButtons('comment-likes', v, likedComments, dislikedComments, v.commentID, {setupID = item.setupID})
 
           if v.userID == ownUserID then
             ui.sameLine(0, 4)
-            if ui.button('Delete') then
+            if ui.button('     Delete') then
               removeComment(v.commentID)
               item.statComments = item.statComments - 1
             end
+            ui.addIcon(ui.Icons.Delete, iconSize, iconAlign)
           end
           ui.popFont()
           
+          if disliked then ui.popStyleVar() end
           ui.popID()
           ui.offsetCursorY(12)
           itemSize.y = ui.getCursorY() - y
@@ -431,7 +498,7 @@ local function windowGeneric()
 
   local setups = refreshSetups()
   if not setups then
-    ui.text('Loading list of setups…')
+    ui.drawLoadingSpinner(ui.windowSize() / 2 - 20, ui.windowSize() / 2 + 20)
     initialLoading()
     return
   end
@@ -439,6 +506,10 @@ local function windowGeneric()
   if type(setups) == 'string' then
     ui.text('Failed to load setups:')
     ui.text(setups)
+    ui.setNextItemIcon(ui.Icons.Restart)
+    if ui.button('Try again', vec2(-0.1, 0)) then
+      setups = nil
+    end
     return
   end
 
@@ -486,7 +557,7 @@ local function windowGeneric()
   end)
   ui.popFont()
 
-  ui.childWindow('scroll', ui.availableSpace() - vec2(0, 40), function ()
+  ui.childWindow('scroll', ui.availableSpace():sub(vec2(0, 40)), function ()
     ui.offsetCursorY(8)
     if #setups == 0 then
       ui.text('<None>')
@@ -496,24 +567,39 @@ local function windowGeneric()
       if ui.areaVisible(itemSize) then
         local y = ui.getCursorY()
         ui.pushID(v.setupID)
+
+        local disliked = v.statDislikes > v.statLikes + 1
+        if disliked then ui.pushStyleVarAlpha(0.5) end
+
         ui.beginGroup()
 
-        ui.text(v.name)
+        ui.pushFont(ui.Font.Title)
+        ui.text(v.name:trim())
+        ui.popFont()
         ui.pushFont(ui.Font.Small)
+
+        ui.sameLine(0, 0)
+        ui.offsetCursorY(10)
+        ui.text('  by ')
+        ui.sameLine(0, 0)
+        if v.userID == ownUserID then ui.pushStyleColor(ui.StyleColor.Text, ownColor) end
+        ui.text(v.userName)
+        if v.userID == ownUserID then ui.popStyleColor() end
+        ui.offsetCursorY(-10)
         
         if not stored.setupsFilterTrack then
           ui.text('Track:')
           ui.sameLine(80)
-          ui.text(v.trackID)
+          ui.text(trackNames[v.trackID] or v.trackID)
         end
         
-        ui.text('Author:')
-        ui.sameLine(80)
-        if v.userID == ownUserID then ui.pushStyleColor(ui.StyleColor.Text, ownColor) end
-        ui.text(v.userName)
-        if v.userID == ownUserID then ui.popStyleColor() end
+        -- ui.text('Author:')
+        -- ui.sameLine(80)
+        -- if v.userID == ownUserID then ui.pushStyleColor(ui.StyleColor.Text, ownColor) end
+        -- ui.text(v.userName)
+        -- if v.userID == ownUserID then ui.popStyleColor() end
 
-        ui.text('Created at:')
+        ui.text('Posted:')
         ui.sameLine(80)
         ui.text(os.date('%Y/%m/%d %H:%M', v.createdDate))
  
@@ -525,12 +611,14 @@ local function windowGeneric()
         if ui.itemHovered() then
           local tooltip = getSetupTooltip(v)
           if tooltip then
-            ui.setTooltip(tooltip)
+            ui.setTooltip(v.name:trim()..'\n\n'..tooltip)
+          else
+            ui.setTooltip(v.name:trim())
           end
         end
 
         if ac.isSetupAvailableToEdit() then
-          if ui.button('Apply', not currentlyApplying and 0 or ui.ButtonFlags.Disabled) then
+          if ui.button('     Apply', not currentlyApplying and 0 or ui.ButtonFlags.Disabled) then
             currentlyApplying = true
             getSetupData(v, true, function (err, data)
               currentlyApplying = false
@@ -547,6 +635,7 @@ local function windowGeneric()
               end
             end)
           end
+          ui.addIcon(icons.Download, iconSize, iconAlign)
           if ui.itemHovered() then
             ui.setTooltip('Setup will be instantly applied (with an option to revert back). To download setup, use context menu.')
           end
@@ -568,18 +657,23 @@ local function windowGeneric()
         likeButtons('likes', v, likedSetups, dislikedSetups, v.setupID, {carID = ac.getCarID(0)})
 
         ui.sameLine(0, 4)
-        if ui.button(string.format('Discussion (%d)', v.statComments)) then
+        if ui.button(string.format('     %d##comments', v.statComments)) then
           discussingItem = v
         end
+        ui.addIcon(icons.Comments, iconSize, iconAlign)
+        if ui.itemHovered() then ui.setTooltip(string.format('Comments: %d', v.statComments)) end
 
         if v.userID == ownUserID then
           ui.sameLine(0, 4)
-          if ui.button('Delete') then
-            removeSetup(v.setupID)
+          if ui.button('     Delete') then
+            removeSetup(v.setupID, true)
           end
+          ui.addIcon(ui.Icons.Delete, iconSize, iconAlign)
         end
 
         ui.popFont()
+
+        if disliked then ui.popStyleVar() end
 
         ui.offsetCursorY(12)
         ui.popID()
@@ -606,20 +700,23 @@ end
 local introHeight = 100
 
 function script.windowMain()
-  if not stored.introduced then
+  if not stored.introduced and ac.load('.appShelf.freshlyInstalled.SetupExchange') then
     ui.offsetCursorY(ui.availableSpaceY() / 2 - introHeight / 2)
     local y = ui.getCursorY()
     ui.offsetCursorX(ui.availableSpaceX() / 2 - 32)
     ui.image('icon.png', 64)
     ui.offsetCursorY(20)
     ui.textWrapped('Setup Exchange is a service for sharing, downloading and discussing car setups. All shared setups are kept in a public database.\n\n'
-      ..'Optionally, there is also a setup menu integration, allowing to apply shared setups directly with a single click. Would you want to enable it? You can always toggle it in app settings.\n\n')
-    if ui.button('Yes, enable setup integration', vec2(ui.availableSpaceX(), 0)) then
+      ..'With this tool, you can access setups from the setup menu as well. Integration is enabled by default, but you can disable it if needed. This option can always be changed in app settings.\n\n')
+    ui.setNextItemIcon(ui.Icons.Confirm)
+    if ui.button('Keep setup integration enabled', vec2(ui.availableSpaceX(), 0)) then
       stored.introduced = true
       ac.setWindowOpen('main_setup', true)
     end
-    if ui.button('OK, keep setup integration disabled', vec2(ui.availableSpaceX(), 0)) then
+    ui.setNextItemIcon(ui.Icons.Hide)
+    if ui.button('Disable setup integration', vec2(ui.availableSpaceX(), 0)) then
       stored.introduced = true
+      ac.setWindowOpen('main_setup', false)
     end
     introHeight = ui.getCursorY() - y
   else

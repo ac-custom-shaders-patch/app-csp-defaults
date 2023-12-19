@@ -6,11 +6,17 @@ const serverPort = 12016; // A few of things like that are happily running on my
 const crypto = require('crypto');
 const restify = require('restify');
 const db = require('better-sqlite3')('data.db', {});
+db.pragma('journal_mode = WAL');
 
 db.exec(`CREATE TABLE IF NOT EXISTS table_setups (setupID INTEGER PRIMARY KEY, createdDate INTEGER, carID TEXT, trackID TEXT, name TEXT, userID TEXT, userName TEXT, data TEXT, statLikes INTEGER, statDislikes INTEGER, statDownloads INTEGER, statComments INTEGER);
 CREATE INDEX IF NOT EXISTS idx_setups_0 ON table_setups(userID);
 CREATE INDEX IF NOT EXISTS idx_setups_1 ON table_setups(carID);
 CREATE INDEX IF NOT EXISTS idx_setups_2 ON table_setups(trackID);
+CREATE INDEX IF NOT EXISTS idx_setups_3 ON table_setups(carID, trackID);
+CREATE INDEX IF NOT EXISTS idx_setups_o_0 ON table_setups(statLikes);
+CREATE INDEX IF NOT EXISTS idx_setups_o_1 ON table_setups(statDownloads);
+CREATE INDEX IF NOT EXISTS idx_setups_o_2 ON table_setups(statComments);
+CREATE INDEX IF NOT EXISTS idx_setups_o_3 ON table_setups(createdDate);
 
 CREATE TABLE IF NOT EXISTS table_comments (commentID INTEGER PRIMARY KEY, createdDate INTEGER, setupID INTEGER, userID TEXT, userName TEXT, data TEXT, statLikes INTEGER, statDislikes INTEGER);
 CREATE INDEX IF NOT EXISTS idx_comments_0 ON table_comments(setupID);
@@ -44,26 +50,28 @@ CREATE TABLE IF NOT EXISTS table_useraddresses (userID TEXT, userAddress TEXT);
 CREATE INDEX IF NOT EXISTS idx_useraddresses_0 ON table_useraddresses(userID);
 CREATE INDEX IF NOT EXISTS idx_useraddresses_1 ON table_useraddresses(userAddress);`);
 
-const limit = 20;
 const dbGetLastID = db.prepare('SELECT last_insert_rowid()').pluck();
 const dbGetListFn = (function (filterBy, orderBy){
   filterBy = filterBy.filter(x => x);
   const key = filterBy.join(';') + ';' + orderBy;
   return this[key] || (this[key] = db.prepare(`SELECT setupID, createdDate, carID, trackID, name, userID, userName, statLikes, statDislikes, statDownloads, statComments FROM table_setups \
-    ${filterBy.length > 0 ? 'WHERE ' : ''}${filterBy.map(x => `${x} = @${x}`).join(' AND ')} ORDER BY ${orderBy || 'createdDate'} LIMIT @offset, ${limit}`));
+    ${filterBy.length > 0 ? 'WHERE ' : ''}${filterBy.map(x => `${x} = @${x}`).join(' AND ')} ORDER BY ${orderBy || 'createdDate'} LIMIT @offset, @limit`));
 }).bind({});
 const dbGetCommentsFn = (function (filterBy, orderBy){
   filterBy = filterBy.filter(x => x);
   const key = filterBy.join(';') + ';' + orderBy;
   return this[key] || (this[key] = db.prepare(`SELECT commentID, createdDate, userID, userName, data, statLikes, statDislikes FROM table_comments \
-    ${filterBy.length > 0 ? 'WHERE ' : ''}${filterBy.map(x => `${x} = @${x}`).join(' AND ')} ORDER BY ${orderBy || 'createdDate'} LIMIT @offset, ${limit}`));
+    ${filterBy.length > 0 ? 'WHERE ' : ''}${filterBy.map(x => `${x} = @${x}`).join(' AND ')} ORDER BY ${orderBy || 'createdDate'} LIMIT @offset, @limit`));
 }).bind({});
 const dbGetItem = db.prepare('SELECT setupID, createdDate, trackID, name, userID, userName, data, statLikes, statDislikes, statDownloads, statComments FROM table_setups WHERE setupID = @setupID');
+const dbGetFullItem = db.prepare('SELECT setupID, createdDate, carID, trackID, name, userID, userName, data, statLikes, statDislikes, statDownloads, statComments FROM table_setups WHERE setupID = @setupID');
 const dbGetComment = db.prepare('SELECT commentID, setupID, createdDate, userID, userName, data, statLikes, statDislikes FROM table_comments WHERE commentID = @commentID');
 const dbCountRecentItems = db.prepare('SELECT COUNT(*) FROM table_setups WHERE createdDate > @now - 60').pluck();
 const dbCountRecentComments = db.prepare('SELECT COUNT(*) FROM table_comments WHERE createdDate > @now - 60').pluck();
 const dbInsertItem = db.prepare('INSERT INTO table_setups (createdDate, carID, trackID, name, userID, userName, data, statLikes, statDislikes, statDownloads, statComments) VALUES \
   (@now, @carID, @trackID, @name, @userID, @userName, @data, 0, 0, 0, 0)');
+const dbRestoreItem = db.prepare('INSERT INTO table_setups (createdDate, carID, trackID, name, userID, userName, data, statLikes, statDislikes, statDownloads, statComments) VALUES \
+  (@createdDate, @carID, @trackID, @name, @userID, @userName, @data, @statLikes, @statDislikes, @statDownloads, @statComments)');
 const dbInsertComment = db.prepare('INSERT INTO table_comments (createdDate, setupID, userID, userName, data, statLikes, statDislikes) VALUES \
   (@now, @setupID, @userID, @userName, @data, 0, 0)');
 const dbDeleteItem = db.prepare('DELETE FROM table_setups WHERE setupID = @setupID');
@@ -103,13 +111,13 @@ const callback = (cb, verify) => {
   return (req, res, next) => {
     try {
       if (!req.headers['x-user-key']) throw new Error('Incorrect request');
-      const params = Object.assign({}, req.body, req.query, req.params, { 
+      const params = Object.assign({ limit: 20 }, req.body, req.query, req.params, { 
         now: Math.floor(Date.now() / 1e3), 
         userID: crypto.createHash('sha256').update('x14MWUAu4jLZoM2Z').update(req.headers['x-user-key']).digest('base64'),
         userAddress: crypto.createHash('sha256').update('4F0e0MXr7fpEUwRs').update(req.headers['x-real-ip'] || req.socket.remoteAddress).digest('base64'),
       });
       if (verify && (dbIsBanned.get(params) || dbIsAddressBanned.get(params) || verify === verifyModerator && !dbIsModerator.get(params))) throw new Error('Incorrect request');
-      if (!dbIsKnownAddress.get(params)) dbAddAddress.run(params);
+      if (verify && !dbIsKnownAddress.get(params)) dbAddAddress.run(params);
       if (verify === verifyUserName && params.userName){
         const knownID = dbGetUserIDByName.get(params);
         if (knownID && knownID != params.userID){
@@ -141,13 +149,24 @@ server.get('/setups', callback(params => dbGetListFn([params.carID ? 'carID' : n
 server.get('/setups/:setupID', callback(params => dbGetItem.get(params)));
 server.post('/setups', callback(params => {
   if (dbCountRecentItems.get(params) > 10) throw new Error('Please try again later');
+  if (params.name === '' || params.name > 255) throw new Error('Incorrect name');
   dbInsertItem.run(params);
   return {setupID: dbGetLastID.get()};
 }, verifyUserName));
+const recentlyRemoved = {};
 server.del('/setups/:setupID', callback(params => {
-  const entry = dbGetItem.get(params);
+  const entry = dbGetFullItem.get(params);
   if (entry.userID != params.userID && !dbIsModerator.get(params)) throw new Error('Can’t remove entry')
   dbDeleteItem.run(params);
+  recentlyRemoved[entry.setupID] = entry;
+}, verifyBase));
+server.post('/setups-restore/:setupID', callback(params => {
+  if (recentlyRemoved[params.setupID] && recentlyRemoved[params.setupID].userID == params.userID) {
+    dbRestoreItem.run(recentlyRemoved[params.setupID]);
+    delete recentlyRemoved[params.setupID];
+  } else {
+    throw new Error('Can’t restore entry');
+  }
 }, verifyBase));
 server.post('/setup-download-counts/:setupID', callback(params => dbIncrementDownloads.run(params)));
 
@@ -225,8 +244,8 @@ const dbCountNewComments = db.prepare('SELECT data, userName, statLikes, statDis
 server.get('/stats', (req, res, next) => {
   try {
     res.send({
-      setups: { total: dbCountItems.get(), recent: dbCountNewItems.all(Math.floor(Date.now() / 1e3) - 86400) },
-      comments: { total: dbCountComments.get(), recent: dbCountNewComments.all(Math.floor(Date.now() / 1e3) - 86400) },
+      setups: { total: dbCountItems.get(), recent: dbCountNewItems.all(Math.floor(Date.now() / 1e3) - 86400 * 3) },
+      comments: { total: dbCountComments.get(), recent: dbCountNewComments.all(Math.floor(Date.now() / 1e3) - 86400 * 3) },
     });
   } catch (e){
     res.send({error: '' + e});

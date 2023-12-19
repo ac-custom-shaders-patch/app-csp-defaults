@@ -4,7 +4,7 @@ local settings = ac.storage({
   higherPrecision = false
 })
 
-local car = ac.getCar(0)
+local car = ac.getCar(0) or error()
 local ignoreChangesUntil = 0
 local onConfigChange
 
@@ -14,15 +14,12 @@ local onConfigChange
 ---@field data table
 ---@field original table
 ---@field map table
----@generic T
----@param filename string
----@param map T
----@return MappedConfig|{data: T, original: T}
 local MappedConfig = class('MappedConfig', function(filename, map)
   local ini = ac.INIConfig.load(filename)
   local data = ini:mapConfig(map)
   local key = 'app.ControllerTweaks:'..filename
-  local original = stringify.tryParse(ac.load(key))
+  -- local original = stringify.tryParse(ac.load(key))
+  local original = nil -- TODO: REMOVE THIS LINE
   if not original then
     ac.store(key, stringify(data))
     original = stringify.parse(stringify(data))
@@ -68,16 +65,72 @@ local cfgControls = MappedConfig(ac.getFolder(ac.FolderID.Cfg)..'/controls.ini',
   },
   __EXT_KEYBOARD = { SHIFT_WITH_WHEEL = false, SHIFT_WITH_XBUTTONS = false },
   __EXT_KEYBOARD_GAS_RAW = { OVERRIDE = 0, LAG_UP = 0.5, LAG_DOWN = 0.2, KEY_MODIFICATOR = -1, KEY = -1, MOUSE = 0, MOUSE_MODIFICATOR = 0 },
-  X360 = { 
-    STEER_GAMMA = 2, STEER_FILTER = 0.7, SPEED_SENSITIVITY = 0.1, STEER_DEADZONE = 0, RUMBLE_INTENSITY = 0.5, STEER_SPEED = 0.2, 
-    STEER_THUMB = 'LEFT', GEAR_UP = 'A', GEAR_DN = 'X', HANDBRAKE = 'B'
+  X360 = {
+    STEER_GAMMA = 2, STEER_FILTER = 0.7, SPEED_SENSITIVITY = 0.1, STEER_DEADZONE = 0, RUMBLE_INTENSITY = 0.5, STEER_SPEED = 0.2, STEER_THUMB = 'LEFT',
+    JOYPAD_INDEX = 0, AXIS_REMAP_THROTTLE = 1, AXIS_REMAP_BRAKES = 0
   },
   STEER = { JOY = 0, AXLE = -1, LOCK = 1080, FF_GAIN = 0.8, FILTER_FF = 0, STEER_GAMMA = 1, SPEED_SENSITIVITY = 0, DEBOUNCING_MS = 50 },
   FF_TWEAKS = { MIN_FF = 0.03, CENTER_BOOST_GAIN = 0, CENTER_BOOST_RANGE = 0.1 },
   FF_ENHANCEMENT = { CURBS = 0.3, ROAD = 0.3, SLIPS = 0.15, ABS = 0.2 },
   FF_ENHANCEMENT_2 = { UNDERSTEER = 0 },
   FF_SKIP_STEPS = { VALUE = 1 },
-  BRAKES = { JOY = 0, AXLE = -1, MIN = 1, MAX = -1, GAMMA = 2.8 }
+  BRAKES = { JOY = 0, AXLE = -1, MIN = 1, MAX = -1, GAMMA = 2.8 },
+
+  -- Gamepad buttons:
+  ABS = { XBOXBUTTON = '' },
+  ABSDN = { XBOXBUTTON = '' },
+  ABSUP = { XBOXBUTTON = '' },
+  ACTION_CELEBRATE = { XBOXBUTTON = '' },
+  ACTION_CHANGE_CAMERA = { XBOXBUTTON = '' },
+  ACTION_CLAIM = { XBOXBUTTON = '' },
+  ACTION_HEADLIGHTS = { XBOXBUTTON = '' },
+  ACTION_HEADLIGHTS_FLASH = { XBOXBUTTON = '' },
+  ACTION_HORN = { XBOXBUTTON = '' },
+  ACTIVATE_AI = { XBOXBUTTON = '' },
+  AUTO_SHIFTER = { XBOXBUTTON = '' },
+  BALANCEDN = { XBOXBUTTON = '' },
+  BALANCEUP = { XBOXBUTTON = '' },
+  DRIVER_NAMES = { XBOXBUTTON = '' },
+  DRS = { XBOXBUTTON = '' },
+  ENGINE_BRAKE_DN = { XBOXBUTTON = '' },
+  ENGINE_BRAKE_UP = { XBOXBUTTON = '' },
+  FFWD = { XBOXBUTTON = '' },
+  GEARDN = { XBOXBUTTON = '' },
+  GEARUP = { XBOXBUTTON = '' },
+  GLANCEBACK = { XBOXBUTTON = '' },
+  GLANCELEFT = { XBOXBUTTON = '' },
+  GLANCERIGHT = { XBOXBUTTON = '' },
+  HANDBRAKE = { XBOXBUTTON = '' },
+  HIDE_APPS = { XBOXBUTTON = '' },
+  HIDE_DAMAGE = { XBOXBUTTON = '' },
+  IDEAL_LINE = { XBOXBUTTON = '' },
+  KERS = { XBOXBUTTON = '' },
+  MGUH_MODE = { XBOXBUTTON = '' },
+  MGUK_DELIVERY_DN = { XBOXBUTTON = '' },
+  MGUK_DELIVERY_UP = { XBOXBUTTON = '' },
+  MGUK_RECOVERY_DN = { XBOXBUTTON = '' },
+  MGUK_RECOVERY_UP = { XBOXBUTTON = '' },
+  MOUSE_STEERING = { XBOXBUTTON = '' },
+  NEXT_CAR = { XBOXBUTTON = '' },
+  NEXT_LAP = { XBOXBUTTON = '' },
+  PAUSE_REPLAY = { XBOXBUTTON = '' },
+  PLAYER_CAR = { XBOXBUTTON = '' },
+  PREVIOUS_CAR = { XBOXBUTTON = '' },
+  PREVIOUS_LAP = { XBOXBUTTON = '' },
+  RESET_RACE = { XBOXBUTTON = '' },
+  REV = { XBOXBUTTON = '' },
+  SHOW_DAMAGE = { XBOXBUTTON = '' },
+  SLOWMO = { XBOXBUTTON = '' },
+  STARTER = { XBOXBUTTON = '' },
+  START_REPLAY = { XBOXBUTTON = '' },
+  TCDN = { XBOXBUTTON = '' },
+  TCUP = { XBOXBUTTON = '' },
+  TRACTION_CONTROL = { XBOXBUTTON = '' },
+  TURBODN = { XBOXBUTTON = '' },
+  TURBOUP = { XBOXBUTTON = '' },
+  __EXT_KEYBOARD_CLUTCH = { XBOXBUTTON = '' },
+  __EXT_SIM_PAUSE = { XBOXBUTTON = '' },
+  __CM_TO_PITS = { XBOXBUTTON = '' },
 })
 
 local cfgFFPostProcess = MappedConfig(ac.getFolder(ac.FolderID.Cfg)..'/ff_post_process.ini', {
@@ -255,7 +308,7 @@ local function convertCurveFromCSV(csvFile, smoothingSteps, intensity)
   table.sort(t, function (a, b) return a[1] < b[1] end)
   local mf = table.maxEntry(t, function (i) return i[1] end)[1]
   local mo = table.maxEntry(t, function (i) return i[2] end)[2]
-  local r = table.map(t, function (v) return #v > 0 and vec2(v[2] / mo, v[1] / mf) or nil end)
+  local r = table.map(t, function (v) return #v > 0 and vec2(v[2] / mo, v[1] / mf) or nil end) ---@type vec2
   for _ = 1, smoothingSteps do
     for i = 2, #r do r[i - 1].x, r[i].x = math.lerp(r[i - 1].x, r[i].x, 0.4), math.lerp(r[i - 1].x, r[i].x, 0.6) end
     r[1].x, r[#r].x = 0, 1
@@ -399,7 +452,7 @@ function script.windowCreateLUT()
     end
   end
 
-  local c = createLUTData.generatedCurve
+  local c = createLUTData.generatedCurve or error() -- to stop Lua extension from complaining about possible nil
   if createLUTData.generatedCurve then
     local f, s = drawCurveBase(vec2(300, 280))
     for i = 1, #c do
@@ -459,7 +512,7 @@ end
 ---@param to number
 ---@param mult number
 ---@param format string
----@param tooltip string?
+---@param tooltip string|function|nil
 local function slider(cfg, section, key, from, to, mult, format, tooltip, preprocess)
   if not cfg.data[section] then error('No such section: '..section, 2) end
   if not cfg.data[section][key] then error('No such key: '..key, 2) end
@@ -584,17 +637,18 @@ local gamepadNames = {
   ['Y'] = { ac.GamepadButton.Y, 'Y' },
   ['LSHOULDER'] = { ac.GamepadButton.LeftShoulder, 'Left Shoulder' },
   ['RSHOULDER'] = { ac.GamepadButton.RightShoulder, 'Right Shoulder' },
-  ['LEFT_THUMB'] = { ac.GamepadButton.LeftThumb, 'Left Thumb' },
-  ['RIGHT_THUMB'] = { ac.GamepadButton.RightThumb, 'Right Thumb' },
+  ['LTHUMB_PRESS'] = { ac.GamepadButton.LeftThumb, 'Left Thumb' },
+  ['RTHUMB_PRESS'] = { ac.GamepadButton.RightThumb, 'Right Thumb' },
   ['START'] = { ac.GamepadButton.Start, 'Start' },
   ['BACK'] = { ac.GamepadButton.Back, 'Back' },
 }
 local gamepadWaiting
 
-local function gamepadButton(section, key, label, tooltip)
+local function gamepadButton(section, label, tooltip)
   ui.alignTextToFramePadding()
   ui.text(label..':')
   ui.sameLine(120, 0)
+  local key = 'XBOXBUTTON'
   local current = cfgControls.data[section][key]
   local id = section..'/'..key
   if ui.button(string.format('%s###%s', gamepadNames[current] and gamepadNames[current][2] or 'None', id), vec2(ui.availableSpaceX() - 24, 0), gamepadWaiting == id and ui.ButtonFlags.Active or 0) then
@@ -615,11 +669,15 @@ local function gamepadButton(section, key, label, tooltip)
     ui.setTooltip(string.format(changed and 'Click to restore original value: %s' or 'Original value: %s', v))
   end
   if gamepadWaiting == id then
+    if ac.blockEscapeButton then ac.blockEscapeButton() end
     if ui.keyboardButtonDown(ui.KeyIndex.Escape) or ui.keyboardButtonDown(ui.KeyIndex.Back) then
+      gamepadWaiting = nil
+    elseif ui.keyboardButtonDown(ui.KeyIndex.Delete) then
+      cfgControls:set(section, key, '', true)
       gamepadWaiting = nil
     else
       for k, _ in pairs(gamepadNames) do
-        if ac.isGamepadButtonPressed(0, _[1]) then
+        if ac.isGamepadButtonPressed(cfgControls.data.X360.JOYPAD_INDEX, _[1]) then
           cfgControls:set(section, key, k, true)
           gamepadWaiting = nil
         end
@@ -851,7 +909,109 @@ function configurators.KEYBOARD()
   ui.popStyleColor()
 end
 
+local gamepadButtonsOrdered = {
+  { 'GEARUP', 'Next gear' },
+  { 'GEARDN', 'Previous gear' },
+  { 'HANDBRAKE', 'Handbrake' },
+  { '__EXT_KEYBOARD_CLUTCH', 'Clutch' },
+  { 'ACTION_HEADLIGHTS', 'Headlights' },
+
+  'Additional',
+  { 'ACTION_HORN', 'Horn' },  
+  { 'GLANCEBACK', 'Look back' },
+  { 'GLANCELEFT', 'Look left' },
+  { 'GLANCERIGHT', 'Look right' },
+  { 'ACTION_CHANGE_CAMERA', 'Change camera' },
+  { 'DRIVER_NAMES', 'Driver names' },
+  { '__EXT_SIM_PAUSE', 'Pause' },
+  { '__CM_TO_PITS', 'Teleport to pits' },
+
+  'Car control',
+  { 'ABSDN', 'ABS (reduce)' },
+  { 'ABSUP', 'ABS (increase)' },
+  { 'TCDN', 'TC (reduce)' },
+  { 'TCUP', 'TC (increase)' },
+  { 'TURBODN', 'Turbo (reduce)' },
+  { 'TURBOUP', 'Turbo (increase)' },
+  { 'KERS', 'KERS' },
+  { 'DRS', 'DRS' },
+
+  'Car extras',
+  { '__EXT_WIPERS_LESS', 'Wipers (reduce)' },
+  { '__EXT_WIPERS_MORE', 'Wipers (increase)' },
+
+  -- { 'ABS', 'ABS' },
+  -- { 'TRACTION_CONTROL', 'Traction control' },
+  -- { 'ACTION_HEADLIGHTS_FLASH', 'Headlights (flash)' },
+  -- { 'BALANCEDN', 'BALANCEDN' },
+  -- { 'BALANCEUP', 'BALANCEUP' },
+  -- { 'ENGINE_BRAKE_DN', 'ENGINE_BRAKE_DN' },
+  -- { 'ENGINE_BRAKE_UP', 'ENGINE_BRAKE_UP' },
+  -- { 'MGUH_MODE', 'MGUH_MODE' },
+  -- { 'MGUK_DELIVERY_DN', 'MGUK_DELIVERY_DN' },
+  -- { 'MGUK_DELIVERY_UP', 'MGUK_DELIVERY_UP' },
+  -- { 'MGUK_RECOVERY_DN', 'MGUK_RECOVERY_DN' },
+  -- { 'MGUK_RECOVERY_UP', 'MGUK_RECOVERY_UP' },
+  
+  -- { 'ACTION_CELEBRATE', 'ACTION_CELEBRATE' },
+  -- { 'ACTION_CLAIM', 'ACTION_CLAIM' },
+
+  -- { 'ACTIVATE_AI', 'ACTIVATE_AI' },
+  -- { 'AUTO_SHIFTER', 'AUTO_SHIFTER' },
+
+  -- { 'HIDE_APPS', 'HIDE_APPS' },
+  -- { 'HIDE_DAMAGE', 'HIDE_DAMAGE' },
+  -- { 'SHOW_DAMAGE', 'SHOW_DAMAGE' },
+  -- { 'IDEAL_LINE', 'IDEAL_LINE' },
+  -- { 'MOUSE_STEERING', 'MOUSE_STEERING' },
+  -- { 'FFWD', 'Fast forward' },
+  -- { 'NEXT_CAR', 'NEXT_CAR' },
+  -- { 'NEXT_LAP', 'NEXT_LAP' },
+  -- { 'PAUSE_REPLAY', 'PAUSE_REPLAY' },
+  -- { 'PLAYER_CAR', 'PLAYER_CAR' },
+  -- { 'PREVIOUS_CAR', 'PREVIOUS_CAR' },
+  -- { 'PREVIOUS_LAP', 'PREVIOUS_LAP' },
+  -- { 'SLOWMO', 'SLOWMO' },
+  -- { 'STARTER', 'STARTER' },
+  -- { 'START_REPLAY', 'START_REPLAY' },
+  -- { 'REV', 'REV' },
+  -- { 'RESET_RACE', 'RESET_RACE' },
+}
+
+local gamepadAxisList = {
+  [0] = 'L2',
+  [1] = 'R2',
+  [2] = 'Left stick (Y+)',
+  [3] = 'Left stick (Y−)',
+  [4] = 'Right stick (Y+)',
+  [5] = 'Right stick (Y−)',
+  [6] = 'Left stick (X+)',
+  [7] = 'Left stick (X−)',
+  [8] = 'Right stick (X+)',
+  [9] = 'Right stick (X−)',
+}
+
+local function comboGamepadAxis(key, label)
+  combo(cfgControls, 'X360', key, label, function (v)
+    return gamepadAxisList[v] or '?'
+  end, function ()
+    for k, v in pairs(gamepadAxisList) do
+      if ui.selectable(v) then cfgControls:set('X360', key, k, true) end
+    end
+  end)
+end
+
 function configurators.X360()
+  --[[ local index = cfgControls.data.X360.JOYPAD_INDEX % 4
+  local useDualSense = cfgControls.data.X360.JOYPAD_INDEX > 3
+  index = ui.slider('##gamepad', index + 1, 1, 4, 'Gamepad: %.0f') - 1
+  local changed = ui.itemEdited()
+  if ui.checkbox('Use PS 5 DualSense gamepad', useDualSense) then useDualSense, changed = not useDualSense, true end
+  if changed then
+    cfgControls:set('X360', 'JOYPAD_INDEX', index + (useDualSense and 4 or 0), true)
+  end
+  ui.offsetCursorY(16) ]]
+
   ui.header('Steering:')
   combo(cfgControls, 'X360', 'STEER_THUMB', 'Thumb', function (v) return v == 'LEFT' and 'Left' or 'Right' end, function ()
     if ui.selectable('Left') then cfgControls:set('X360', 'STEER_THUMB', 'LEFT', true) end
@@ -883,10 +1043,22 @@ function configurators.X360()
   slider(cfgControls, 'X360', 'STEER_DEADZONE', 0, 100, 100, 'Deadzone: %.0f%%', 'Ignore steering inputs within that range')
   slider(cfgControls, 'X360', 'RUMBLE_INTENSITY', 0, 100, 100, 'Rumble intensity: %.0f%%', 'How much gamepad would shake (if supported)')
 
-  -- Actually that is not how AC works, it uses separate sections for this stuff 😩
-  -- gamepadButton('X360', 'GEAR_UP', 'GEAR_UP')
-  -- gamepadButton('X360', 'GEAR_DN', 'GEAR_DN')
-  -- gamepadButton('X360', 'HANDBRAKE', 'HANDBRAKE')
+  ui.offsetCursorY(16)
+  ui.header('Buttons:')
+  for i = 1, #gamepadButtonsOrdered do
+    local v = gamepadButtonsOrdered[i]
+    if type(v) == 'string' then
+      ui.offsetCursorY(16)
+      ui.header(v..':')
+    else
+      gamepadButton(v[1], v[2])
+    end
+  end
+
+  ui.offsetCursorY(16)
+  ui.header('Tweaks:')
+  comboGamepadAxis('AXIS_REMAP_THROTTLE', 'Throttle')
+  comboGamepadAxis('AXIS_REMAP_BRAKES', 'Brakes')
 end
 
 function configurators.WHEEL()
