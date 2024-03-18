@@ -6,10 +6,10 @@ local function mirrorSettings(i)
   ui.beginGroup()
 
   ui.setNextItemWidth((ui.availableSpaceX() - 4) / 2)
-  p.rotation.x = ui.slider('##rotationX', p.rotation.x * 100, -40, 40, 'Rotation X: %.1f%%') / 100
+  p.rotation.x = ui.slider('##rotationX', p.rotation.x * 100, -60, 60, 'Rotation X: %.1f%%') / 100
   ui.sameLine(0, 4)
   ui.setNextItemWidth(ui.availableSpaceX())
-  p.rotation.y = ui.slider('##rotationY', p.rotation.y * 100, -40, 40, 'Rotation Y: %.1f%%') / 100
+  p.rotation.y = ui.slider('##rotationY', p.rotation.y * 100, -60, 60, 'Rotation Y: %.1f%%') / 100
   
   ui.setNextItemWidth((ui.availableSpaceX() - 4) / 2)
   p.fov = ui.slider('##fov', p.fov, 2, 60, 'FOV: %.2f°', 2)   
