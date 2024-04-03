@@ -252,10 +252,10 @@ local function blockCarInstruments()
     local p = ac.accessExtraSwitchParams(i - 1)
     if anyExtraHint and not t then ui.pushStyleColor(ui.StyleColor.Text, rgbm.colors.gray) end
     if ui.button(string.char(('A'):byte(1) + i - 1), vec2(w6, 0), BTN_FN(isExtraPressed(i))) and not p.holdMode then
-      ac.setExtraSwitch(i - 1, not isExtraPressed(i))
+      ac.simulateCustomHotkeyPress('__EXT_LIGHT_'..string.char(('A'):byte(1) + i - 1))
     end
     if p and p.holdMode and ui.itemActive() then
-      ac.setExtraSwitch(i - 1, true)
+      ac.simulateCustomHotkeyPress('__EXT_LIGHT_'..string.char(('A'):byte(1) + i - 1))
     end
     if anyExtraHint and not t then ui.popStyleColor() end
     if ui.itemHovered() then
