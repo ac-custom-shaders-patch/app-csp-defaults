@@ -7,6 +7,8 @@ require("src/UI/windows/window_main")
 require("src/UI/windows/window_settings")
 require("src/UI/windows/window_sdk")
 
+ac.store("EXT_CONTROLS_AVAILABLE", 1)
+
 local requiredBindsIntervalID = nil
 requiredBindsIntervalID = setInterval(function()
 	if SETTINGS.disableForcedBinds then
