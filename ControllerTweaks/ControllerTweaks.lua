@@ -769,9 +769,9 @@ local function gyroModeCombo()
     cfgSystem:set('FF_EXPERIMENTAL', 'ENABLE_GYRO', currentGyroMode == 2)
     cfgFFBTweaks:set('GYRO2', 'ENABLED', currentGyroMode == 3, false)
   end
-  if currentGyroMode == 3 then
-    slider(cfgFFBTweaks, 'GYRO2', 'STRENGTH', 0, 100, 100, 'Gyro strength: %.0f%%', 'Effect strength')
-  end
+  -- if currentGyroMode == 3 then
+  --   slider(cfgFFBTweaks, 'GYRO2', 'STRENGTH', 0, 100, 100, 'Gyro strength: %.0f%%', 'Effect strength')
+  -- end
 end
 
 local function getPPMode()

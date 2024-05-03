@@ -27,7 +27,7 @@ local function arrangeTabs()
   local tabCoords = {}
 
   for k, v in pairs(setup.sections) do
-    if v.TAB and v.POS_X and v.POS_Y then
+    if v.TAB and v.POS_X and v.POS_Y and not v.EXT_CONTROLLER then
       local vTab = v.TAB and v.TAB[1]
       local vPosX = tonumber(v.POS_X and v.POS_X[1]) or 0
       local vPosY = tonumber(v.POS_Y and v.POS_Y[1]) or 0
@@ -47,7 +47,14 @@ local function arrangeTabs()
         local coords = table.getOrCreate(tabCoords, vTab, function () return {x = {}, y = {}} end)
         if not table.contains(coords.x, created.x) then table.insert(coords.x, created.x) end
         if not table.contains(coords.y, created.y) then table.insert(coords.y, created.y) end
-        posToItems[posKey] = created
+        if created.label == '' and posToItems[posKey] then
+          created.linked = posToItems[posKey].linked
+          posToItems[posKey].hidden = false
+          posToItems[posKey].linked = created
+          created.hidden = true
+        else
+          posToItems[posKey] = created
+        end
         table.insert(table.getOrCreate(tabs, vTab, function () return {} end), created)
       end
     end
@@ -105,7 +112,14 @@ local function scanSetups()
   return scanned
 end
 
+ac.debug('items', ac.getSetupSpinners() )
+
 function script.windowMain()
+  -- if ui.button('reload') then
+  --   -- tabsOrdered = arrangeTabs()
+  --   ac.log(__util.native('system.reload'))
+  -- end
+
   if not ac.isCarResetAllowed() then
     ui.setNextTextSpanStyle(1, 17, nil, true)
     ui.textWrapped('Pocket Technician can help you change car setup outside of pits, but only in single-player practice sessions. Have to keep things fair.')
@@ -123,7 +137,7 @@ function script.windowMain()
     end
     return nil
   end
-  ui.tabBar('##tabs', ui.TabBarFlags.IntegratedTabs, function ()
+  ui.tabBar('##tabs', bit.bor(ui.TabBarFlags.IntegratedTabs, ui.TabBarFlags.FittingPolicyScroll and 0, ui.TabBarFlags.TabListPopupButton), function ()
     for _, tabInfo in ipairs(tabsOrdered) do
       ui.tabItem(tabInfo.name, function ()
         local w = ui.availableSpaceX()
@@ -137,17 +151,38 @@ function script.windowMain()
               if not tabInfo.singleColumn then ui.setCursorX(x + v.x * (w / 2 + 2)) end
               ui.setCursorY(y + v.y * 26)
               if not v.format then
-                local u = s.units == '%' and '%%' or s.units == 'deg' and '°' or (s.units and ' '..s.units or ''):replace('%', '%%')
-                v.format = v.label..': %%.%df%s' % {math.max(math.round(-math.log10(s.displayMultiplier)), 0), u}
+                local safeName = (v.label == '' and v.name or v.label):replace('%', '%%')
+                if s.items then
+                  v.format = '%s: %%s' % safeName
+                else
+                  local u = s.units == '%' and '%%' or s.units == 'deg' and '°' or (s.units and ' '..s.units or ''):replace('%', '%%')
+                  v.format = '%s: %%.%df%s' % {safeName, math.max(math.round(-math.log10(s.displayMultiplier)), 0), u}
+                end
               end
               local newValue
-              if s.step > 1 then
+              if s.items then
+                if s.step == 1 and s.min == 0 and s.max == #s.items - 1 and #s.items <= 5 then
+                  ui.combo('##s', '', function ()
+                    for i = 1, #s.items do
+                      if ui.selectable(s.items[i], i - 1 == s.value) then
+                        newValue = i - 1
+                      end
+                    end
+                  end)
+                  local bi, ba = ui.itemRect()
+                  bi.x, ba.x = bi.x + 28, ba.x - 28
+                  ui.drawTextClipped(v.format % (s.items[s.value + 1] or s.value), bi, ba, nil, 0.5, true)
+                else
+                  local format = (v.format % (s.items[s.value + 1] or s.value)):replace('%', '%%')
+                  newValue = ui.slider('##s', (s.value - s.min) / s.step, 0, (s.max - s.min) / s.step, format, true)
+                  newValue = ui.itemEdited() and newValue * s.step + s.min or nil
+                end
+              elseif s.step > 1 then
                 local format = (v.format % (s.value * s.displayMultiplier)):replace('%', '%%')
-                newValue = ui.slider('##'..v.name, (s.value - s.min) / s.step, 0, (s.max - s.min) / s.step, format, true)
-                if ui.itemActive() then ac.debug('newValue', newValue) end
+                newValue = ui.slider('##s', (s.value - s.min) / s.step, 0, (s.max - s.min) / s.step, format, true)
                 newValue = ui.itemEdited() and newValue * s.step + s.min or nil
               else
-                newValue = ui.slider('##'..v.name, s.value * s.displayMultiplier, s.min * s.displayMultiplier, s.max * s.displayMultiplier, v.format)
+                newValue = ui.slider('##s', s.value * s.displayMultiplier, s.min * s.displayMultiplier, s.max * s.displayMultiplier, v.format)
                 newValue = ui.itemEdited() and newValue / s.displayMultiplier or nil
               end
               ui.sameLine(0, 4)
