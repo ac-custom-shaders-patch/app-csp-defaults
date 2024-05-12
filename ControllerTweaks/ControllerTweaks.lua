@@ -74,7 +74,9 @@ local cfgControls = MappedConfig(ac.getFolder(ac.FolderID.Cfg)..'/controls.ini',
   FF_ENHANCEMENT = { CURBS = 0.3, ROAD = 0.3, SLIPS = 0.15, ABS = 0.2 },
   FF_ENHANCEMENT_2 = { UNDERSTEER = 0 },
   FF_SKIP_STEPS = { VALUE = 1 },
+  THROTTLE = { JOY = 0, AXLE = -1, MIN = -1, MAX = 1, GAMMA = 1 },
   BRAKES = { JOY = 0, AXLE = -1, MIN = 1, MAX = -1, GAMMA = 2.8 },
+  CLUTCH = { JOY = 0, AXLE = -1, MIN = 1, MAX = -1, GAMMA = 1 },
 
   -- Gamepad buttons:
   ABS = { XBOXBUTTON = '' },
@@ -100,7 +102,7 @@ local cfgControls = MappedConfig(ac.getFolder(ac.FolderID.Cfg)..'/controls.ini',
   GLANCEBACK = { XBOXBUTTON = '' },
   GLANCELEFT = { XBOXBUTTON = '' },
   GLANCERIGHT = { XBOXBUTTON = '' },
-  HANDBRAKE = { XBOXBUTTON = '' },
+  HANDBRAKE = { XBOXBUTTON = '', JOY = 0, AXLE = -1, MIN = 1, MAX = -1, GAMMA = 1 },
   HIDE_APPS = { XBOXBUTTON = '' },
   HIDE_DAMAGE = { XBOXBUTTON = '' },
   IDEAL_LINE = { XBOXBUTTON = '' },
@@ -1061,6 +1063,25 @@ function configurators.X360()
   comboGamepadAxis('AXIS_REMAP_BRAKES', 'Brakes')
 end
 
+local function axisGammaSlider(section, format, tooltip)
+  slider(cfgControls, section, 'GAMMA', 1, 500, 100, format, function ()
+    ui.text(string.format('Curve (use %s to see it in action):', tooltip))
+    local f, s = drawCurveBase(vec2(300, 120))
+    local b = axleValue(section)
+    if b > 0.001 then
+      ui.drawLine(f + vec2(0, car.brake * s.y), f + vec2(s.x, car.brake * s.y), rgbm.colors.gray)
+      ui.drawLine(f + vec2(b * s.x, 0), f + vec2(b * s.x, s.y), rgbm.colors.gray)
+    end
+    local v = cfgControls.data[section].GAMMA
+    if v == 0 then v = 1 end
+    for i = 0, 30 do
+      local x = (i / 30) ^ 2
+      ui.pathLineTo(f + vec2(x, x ^ v) * s)
+    end
+    ui.pathStroke(ac.getUI().accentColor)
+  end)
+end
+
 function configurators.WHEEL()
   userFFBGainSlider()
 
@@ -1093,24 +1114,14 @@ function configurators.WHEEL()
   ui.offsetCursorY(16)
   ui.header('Others:')
   slider(cfgControls, 'STEER', 'DEBOUNCING_MS', 0, 200, 1, 'Debouncing: %.0f ms', 'Minimum delay between gear shifts with sequential gearbox')
-  slider(cfgControls, 'BRAKES', 'GAMMA', 0, 500, 100, 'Brakes gamma: %.0f%%',
-    function ()
-      ui.text('Curve (use brake pedal to see it in action):')
-      local f, s = drawCurveBase(vec2(300, 120))
-      local b = axleValue('BRAKES')
-      if b > 0.001 then
-        ui.drawLine(f + vec2(0, car.brake * s.y), f + vec2(s.x, car.brake * s.y), rgbm.colors.gray)
-        ui.drawLine(f + vec2(b * s.x, 0), f + vec2(b * s.x, s.y), rgbm.colors.gray)
-      end
-      local v = cfgControls.data.BRAKES.GAMMA
-      if v == 0 then v = 1 end
-      for i = 0, 30 do
-        local x = (i / 30) ^ 2
-        ui.pathLineTo(f + vec2(x, x ^ v) * s)
-      end
-      ui.pathStroke(ac.getUI().accentColor)
-    end
-  )
+  if ac.getPatchVersionCode() > 2554 then
+    axisGammaSlider('THROTTLE', 'Gas gamma: %.0f%%', 'gas pedal')
+  end
+  axisGammaSlider('BRAKES', 'Brakes gamma: %.0f%%', 'brake pedal')
+  if ac.getPatchVersionCode() > 2554 then
+    axisGammaSlider('CLUTCH', 'Clutch gamma: %.0f%%', 'clutch pedal')
+    axisGammaSlider('HANDBRAKE', 'Handbrake gamma: %.0f%%', 'handbrake')
+  end
 
   ui.offsetCursorY(16)
   ui.header('FFB:')

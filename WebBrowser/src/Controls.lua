@@ -341,7 +341,7 @@ local function tabsBar()
   if selectedX ~= -1 then
     local tab = App.tabs[selFixed]
     local size = tab.attributes.pinned and pinnedTabSize or tabSize
-    drawTabItem(selFixed, tab, selectedX, posY, size)
+    drawTabItem(selFixed, tab, math.round(selectedX), posY, size)
   end
   ui.popStyleColor(3)
 

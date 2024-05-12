@@ -112,12 +112,9 @@ local function scanSetups()
   return scanned
 end
 
-ac.debug('items', ac.getSetupSpinners() )
-
 function script.windowMain()
-  -- if ui.button('reload') then
-  --   -- tabsOrdered = arrangeTabs()
-  --   ac.log(__util.native('system.reload'))
+  -- if ui.button('Reload') then
+  --   __util.native('system.reload')
   -- end
 
   if not ac.isCarResetAllowed() then
