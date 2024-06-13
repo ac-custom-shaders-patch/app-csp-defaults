@@ -2,12 +2,22 @@
   Simplest client for exchanging setups with comments and likes.
 ]]
 
-local json = require 'lib/json'
+local mainCarID = ac.getCarID(0)
+local v2 = const(ac.getPatchVersionCode() >= 3044)
+local v3 = const(ac.getPatchVersionCode() >= 3050)
 local endpoint = 'http://se.api.acstuff.ru'
 -- local endpoint = 'http://127.0.0.1:12016'
 local temporaryName = ac.getFolder(ac.FolderID.AppDataLocal)..'/Temp/ac-se-shared.ini'
 local temporaryBackupName = ac.getFolder(ac.FolderID.AppDataLocal)..'/Temp/ac-se-backup.ini'
 local trackNames = {}
+ 
+if not v2 then
+  local json = require 'lib/json'
+  JSON = {
+    stringify = json.encode,
+    parse = json.decode
+  }
+end
 
 do
   local cfg = ac.INIConfig.load(ac.getFolder(ac.FolderID.ExtCfgSys)..'/data_track_params.ini', ac.INIFormat.Extended)
@@ -18,80 +28,182 @@ do
   end
 end
 
----@type string
-local userKey
+---@param callback fun(err: string?, sessionData: {sessionID: string, userID: string, likes: string, dislikes: string}?, userKey: string?)
+local function createSession(callback)
+  ac.uniqueMachineKeyAsync(function (err, data)
+    if err then
+      callback(err)
+      return
+    end
 
-ac.uniqueMachineKeyAsync(function (err, data)
-  if err then ac.error('Failed to get key: '..err) end
-  userKey = ac.checksumSHA256('LB83XurHhTPhpmTc'..data)
-end)
+    local userID = ac.checksumSHA256('LB83XurHhTPhpmTc'..data)
+    if not v3 then
+      callback(nil, nil, userID)
+      return
+    end
+  
+    web.request('POST', endpoint..'/session', {['X-Session-ID'] = '0'}, JSON.stringify{userID = userID}, function (err, response)
+      if err then
+        callback(err)
+      else
+        local parsed = JSON.parse(response.body)
+        if type(parsed) == 'table' and parsed.key then
+          require('shared/utils/signing').blob('{UniqueMachineKeyChecksum}', parsed.key, function (signature, header)
+            web.request('PATCH', endpoint..'/session', {['X-Session-ID'] = '0'}, JSON.stringify{
+              userID = userID,
+              header = ac.encodeBase64(header),
+              signature = ac.encodeBase64(signature),
+              carID = mainCarID,
+              carName = ac.getCarName(0),
+              trackID = ac.getTrackID(),
+              trackName = ac.getTrackName()
+            }, function (err, response)
+              if err then
+                callback(err)
+              else
+                local parsed = JSON.parse(response.body)
+                if type(parsed) == 'table' and parsed.sessionID and parsed.userID then
+                  callback(nil, parsed)
+                else
+                  callback('Server is not working correctly')
+                end
+              end
+            end)
+          end)
+        else
+          callback('Server is not working correctly')
+        end
+      end
+    end)
+  end)
+end
+
+local ownUserID
+local likedSetups, dislikedSetups = {}, {}
+
+---@type string? string?, string?, number
+local userKey, sessionID, sessionError, sessionCooldown = nil, nil, nil, 0
+local function tryRecreateSession()
+  if os.preciseClock() < sessionCooldown then
+    return
+  end
+  sessionCooldown = os.preciseClock() + 2
+  createSession(function (err, session, newUserKey)
+    if newUserKey then
+      userKey = newUserKey
+    elseif err then
+      sessionError, sessionID = tostring(err), nil
+      ac.error('Failed to create a session: '..tostring(err))
+    else
+      sessionError, sessionID, ownUserID = nil, session.sessionID, session.userID
+      ac.log('New session: '..session.sessionID..', user ID: '..ownUserID)
+      table.clear(likedSetups)
+      table.clear(dislikedSetups)
+      for i, v in ipairs(session.likes:split(';', nil, false, true)) do
+        likedSetups[i] = tonumber(v, 36)
+      end
+      for i, v in ipairs(session.dislikes:split(';', nil, false, true)) do
+        dislikedSetups[i] = tonumber(v, 36)
+      end
+    end
+  end)
+end
+
+tryRecreateSession()
+
+if not string.urlEncode then
+  string.urlEncode = function (str)
+    str = string.gsub(str, "([^%w%.%- ])", function(c)
+      return string.format("%%%02X", string.byte(c))
+    end)
+    str = string.gsub(str, " ", "+")
+    return str
+  end
+end
 
 local function rest(method, url, data, callback, errorHandler)
-  if not userKey then
+  if not sessionID and not userKey and (method ~= 'GET' or url ~= 'setups') then
     setTimeout(function ()
       rest(method, url, data, callback, errorHandler)
-    end, 4)
+    end, 0.5)
     return
   end
 
   if method == 'GET' and data then
     local f = true
     for k, v in pairs(data) do
-      url = url..(f and '?' or '&')..k..'='..v
+      url = url..(f and '?' or '&')..k..'='..string.urlEncode(v)
       f = false
     end
   end
 
-  if not callback then callback = function (response) ac.log('Successfully executed: '..url..', response: '..stringify(response)) end end
+  if not callback then callback = function (response, headers) ac.log('Successfully executed: '..url..', response: '..stringify(response)) end end
   if not errorHandler then errorHandler = function (err) ac.warn(err) end end
 
-  -- local start = os.preciseClock()
-  web.request(method, endpoint..'/'..url, { ['Content-Type'] = 'application/json', ['X-User-Key'] = userKey }, method ~= 'GET' and json.encode(data) or nil, function (err, response)
-    -- ac.log('Request: %s, %.1f ms' % {endpoint..'/'..url, 1e3 * (os.preciseClock() - start)})
+  local start = os.preciseClock()
+  web.request(method, endpoint..'/'..url, {
+    ['Content-Type'] = 'application/json',
+    [userKey and 'X-User-Key' or 'X-Session-ID'] = userKey or sessionID or '0',
+  }, method ~= 'GET' and JSON.stringify(data) or nil, function (err, response)
+    ac.log('Request: %s, %.1f ms' % {endpoint..'/'..url, 1e3 * (os.preciseClock() - start)})
     if err then
       return errorHandler(tostring(err))
     end
 
     if response.status >= 400 then
       local parsed = try(function ()
-        return json.decode(response.body)
+        return JSON.parse(response.body)
       end, function () end)
       if parsed and parsed.error then err = parsed.error else err = response.body end
       err = tostring(err)
       if err:sub(1, 7) == 'Error: ' then err = err:sub(8) end
+      if err == 'Invalid session ID' then
+        tryRecreateSession()
+      end
       return errorHandler(err)
     end
 
     try(function()
-      callback(json.decode(response.body))
+      callback(JSON.parse(response.body), response.headers)
     end, errorHandler)
   end)
 end
 
-local limit = 80
+local limit = 40
 
-local function refreshGenList(url, params, callback, offset, resultList)
-  if not offset then
-    offset, resultList = 0, {}
-  end
-  rest('GET', url, table.chain(params, {offset = offset, limit = limit}), function (response)
-    for _, v in ipairs(response) do table.insert(resultList, v) end
-    if #response >= limit then
-      refreshGenList(url, params, callback, offset + #response, resultList)
-    else
-      callback(resultList)
+local function refreshGenList(uniqueKey, url, params, callback, continuationState)
+  rest('GET', url, table.chain(params, {offset = continuationState and #continuationState[3] or 0, limit = limit}), function (response, headers)
+    local totalCount = tonumber(headers['x-total-count']) or #response
+    if callback then
+      local continuationState = {#response < totalCount, totalCount, response, table.map(response, function (item) return true, item[uniqueKey] end)}
+      callback(response, continuationState[1] and function ()
+        if continuationState[1] then
+          continuationState[1] = false
+          refreshGenList(uniqueKey, url, params, nil, continuationState)
+        end 
+      end, totalCount)
+    elseif continuationState and #response > 0 then
+      for _, v in ipairs(response) do 
+        if not continuationState[4][v[uniqueKey]] then
+          continuationState[4][v[uniqueKey]] = true
+          table.insert(continuationState[3], v)
+        end
+      end
+      continuationState[2] = totalCount
+      continuationState[1] = #continuationState[3] < continuationState[2]
     end
   end, function (err)
     ac.warn('Failed to get list of '..url..': '..err)
-    callback(#resultList > 0 and resultList or err)
+    if callback then callback(err) end
   end)
 end
 
 local setupsOrder = {
-  {'Hot', '(statDislikes * 10 - statLikes * 20 - statDownloads - statComments * 2) / max(60, @now - createdDate)'},
+  {'Hot', '(statDislikes*200-statLikes*20-statDownloads-statComments*2)*1e6/sqrt(max(60.0,@now-createdDate)/60)'},
   {'Popular', '-statDownloads'},
-  {'Liked', 'statDislikes - statLikes * 2'},
+  {'Liked', 'statDislikes-statLikes*2'},
   {'Newest', '-createdDate'},
+  {'Title', 'name'},
 }
 
 local stored = ac.storage{
@@ -105,10 +217,10 @@ if #stored.userName == 0 then
   stored.userName = ac.getDriverName(0) or 'User'
 end
 
-local ownUserID
+local authorUsernameFilter = ''
+local searchFilter = ''
 local listOfSetups, listOfComments
 local listOfSetupsPrev, listOfCommentsPrev
-local likedSetups, dislikedSetups = {}, {}
 local likedComments, dislikedComments = {}, {}
 local downloadedSetups = {}
 local initializing = false
@@ -161,7 +273,7 @@ local function downloadSetupAsFile(setupInfo)
   getSetupData(setupInfo, true, function (err, data)
     currentlyApplying = false
     local name = 'generic/loaded-'..setupInfo.name..'.ini'
-    local filename = ac.getFolder(ac.FolderID.UserSetups)..'/'..ac.getCarID(0)..'/'..name
+    local filename = ac.getFolder(ac.FolderID.UserSetups)..'/'..(setupInfo.carID or mainCarID)..'/'..name
     io.save(filename, data)
     ac.refreshSetups()
     ui.toast(ui.Icons.Confirm, 'Setup loaded as “'..name..'”', function ()
@@ -199,7 +311,7 @@ local function getItemDisplayName(item, value, hint)
   if item:find('TOE_OUT_[LR]R') then return 'Toe (rear)' end
   if item:find('CAMBER_[LR]F') then return 'Camber (front)' end
   if item:find('CAMBER_[LR]R') then return 'Camber (rear)' end
-  if hint then return hint end
+  if hint then return type(hint) == 'string' and string.replace(hint, ' Gear', ' gear') or hint end
   local id = item:find('WING_(%d)')
   if id then return 'Wing #'..id end
   return item
@@ -239,28 +351,50 @@ local function getSetupTooltip(setupInfo)
   return setupTooltips[setupInfo.setupID]
 end
 
+local listOfSetupsContinuation
+local setupsTotalCount = 0
 local function refreshSetups()
   if not listOfSetups then
     local key = math.random()
-    listOfSetups = key
-    refreshGenList('setups', {carID = ac.getCarID(0), trackID = stored.setupsFilterTrack and ac.getTrackID() or nil, orderBy = setupsOrder[stored.setupsOrder][2]}, function (ret)
+    listOfSetups, listOfSetupsContinuation = key, nil
+    refreshGenList('setupID', 'setups', {
+      carID = authorUsernameFilter == '' and mainCarID or nil,
+      trackID = authorUsernameFilter == '' and stored.setupsFilterTrack and ac.getTrackID() or nil,
+      userName = authorUsernameFilter ~= '' and authorUsernameFilter or nil,
+      search = authorUsernameFilter == '' and searchFilter ~= '' and searchFilter or nil,
+      orderBy = setupsOrder[stored.setupsOrder][2]
+    }, function (ret, continuation, totalCount)
       if listOfSetups == key then
         listOfSetups = ret
         listOfSetupsPrev = ret
+        listOfSetupsContinuation = continuation and {ret, continuation}
+        setupsTotalCount = totalCount or 0
       end
     end)
   end
   return (type(listOfSetups) == 'table' or type(listOfSetups) == 'string') and listOfSetups or listOfSetupsPrev
 end
 
+local function loadMoreSetups()
+  if type(listOfSetups) == 'table' and listOfSetupsContinuation and listOfSetupsContinuation[1] == listOfSetups then
+    listOfSetupsContinuation[2]()
+  end
+end
+
+local listOfCommentsContinuation
+local commentsTotalCount = 0
+local scrollCommentsDown = false
 local function refreshComments()
   if not listOfComments then
     local key = math.random()
     listOfComments = key
-    refreshGenList('comments', {setupID = discussingItem.setupID}, function (ret)
+    refreshGenList('commentID', 'comments', {setupID = discussingItem.setupID}, function (ret, continuation, totalCount)
       if listOfComments == key then
         listOfComments = ret
         listOfCommentsPrev = ret
+        scrollCommentsDown = true
+        listOfCommentsContinuation = continuation and {ret, continuation}
+        commentsTotalCount = totalCount or 0
       end
     end)
     table.clear(likedComments)
@@ -272,18 +406,24 @@ local function refreshComments()
     end)
   end
   return (type(listOfComments) == 'table' or type(listOfComments) == 'string') and listOfComments or listOfCommentsPrev
+end  
+
+local function loadMoreComments()
+  if type(listOfComments) == 'table' and listOfCommentsContinuation and listOfCommentsContinuation[1] == listOfComments then
+    listOfCommentsContinuation[2]()
+  end
 end
 
 local function initialLoading()
-  if initializing then return end
+  if initializing or v3 then return end
   initializing = true
-  rest('GET', 'user', {carID = ac.getCarID(0), carName = ac.getCarName(0), trackID = ac.getTrackID(), trackName = ac.getTrackName()}, function (response)
+  rest('GET', 'user', {carID = mainCarID, carName = ac.getCarName(0), trackID = ac.getTrackID(), trackName = ac.getTrackName()}, function (response)
     ownUserID = response.userID or error('UserID is missing')
     ac.log('My user ID: '..ownUserID)
   end, function (err)
     ac.warn('Failed to get own user ID: '..err)
   end)
-  rest('GET', 'likes', {carID = ac.getCarID(0)}, function (data)
+  rest('GET', 'likes', {carID = mainCarID}, function (data)
     for _, v in ipairs(data) do
       table.insert(v.direction == 1 and likedSetups or dislikedSetups, v.setupID)
     end
@@ -300,20 +440,26 @@ local function removeSetup(id, withUndo)
       rest('POST', 'setups-restore/'..id, nil, function ()
         listOfSetups = nil
       end, function (err)
-        ui.toast(ui.Icons.Warning, 'Failed to restore shared setup: '..err)
+        ui.toast(ui.Icons.Warning, 'Failed to restore setup: '..err)
       end)
     end or nil)
     listOfSetups = nil
     removingIDs[id] = nil
   end, function (err)
-    ui.toast(ui.Icons.Warning, 'Failed to remove shared setup: '..err)
+    ui.toast(ui.Icons.Warning, 'Failed to remove setup: '..err)
     removingIDs[id] = nil
   end)
 end
 
-local function removeComment(id)
+local function removeComment(id, withUndo)
   rest('DELETE', 'comments/'..id, nil, function ()
-    ui.toast(ui.Icons.Warning, 'Comment removed')
+    ui.toast(ui.Icons.Warning, 'Comment removed', withUndo and function ()
+      rest('POST', 'comments-restore/'..id, nil, function ()
+        listOfComments = nil
+      end, function (err)
+        ui.toast(ui.Icons.Warning, 'Failed to restore comment: '..err)
+      end)
+    end or nil)
     listOfComments = nil
   end, function (err)
     ui.toast(ui.Icons.Warning, 'Failed to remove comment: '..err)
@@ -335,7 +481,7 @@ local iconDislikeAlign = vec2(0, 1)
 local function shareSetup(name)
   ac.saveCurrentSetup(temporaryName)
   rest('POST', 'setups', {
-    carID = ac.getCarID(0),
+    carID = mainCarID,
     trackID = ac.getTrackID(),
     name = name,
     userName = stored.userName,
@@ -397,8 +543,119 @@ function script.windowMainSettings()
   end
 end
 
+local function commentsBlock()
+  local item = discussingItem
+  local comment = discussingComments[item.setupID] or ''
+  local comments = refreshComments()
+  if not comments then
+    ui.drawLoadingSpinner(ui.windowSize() / 2 - 20, ui.windowSize() / 2 + 20)
+    -- ui.text('Loading list of comments…')
+    return
+  end
+
+  if type(comments) == 'string' then
+    ui.text('Failed to load comments:')
+    ui.text(comments)
+    return
+  end
+
+  ui.childWindow('commentsScroll', ui.availableSpace():sub(vec2(0, 40)), function ()
+    ui.offsetCursorY(8)
+    if #comments == 0 then
+      ui.textDisabled('No comments yet')
+    end
+    for _, v in ipairs(comments) do
+      if ui.areaVisible(commentSize) then
+        if _ == #comments then
+          loadMoreComments()
+        end
+        local y = ui.getCursorY()
+        ui.pushID(v.commentID)
+        local disliked = v.statDislikes > v.statLikes + 1
+        if disliked then ui.pushStyleVarAlpha(0.5) end
+        ui.pushFont(ui.Font.Small)
+        if v.userID == ownUserID then ui.pushStyleColor(ui.StyleColor.Text, ownColor) end
+        ui.text(v.userName)
+        if v.userID == ownUserID then ui.popStyleColor() end
+        ui.sameLine(0, 0)
+        ui.text(string.format(' • %s', os.date('%Y/%m/%d %H:%M', v.createdDate)))
+        ui.popFont()
+        ui.offsetCursorY(-2)
+
+        if v2 then
+          local i = string.find(v.data, '@'..stored.userName, 1, true)
+          if i then
+            ui.setNextTextSpanStyle(i, i + 1 + #stored.userName, ownColor, true)
+          end
+        end
+        ui.textWrapped(v.data)
+
+        ui.pushFont(ui.Font.Small)
+        if ui.button('     Reply') then
+          comment = '@'..v.userName..' '..comment
+        end
+        ui.addIcon(ui.Icons.Undo, iconSize, iconAlign)
+
+        ui.sameLine(0, 4)
+        likeButtons('comment-likes', v, likedComments, dislikedComments, v.commentID, {setupID = item.setupID})
+
+        if v.userID == ownUserID then
+          ui.sameLine(0, 4)
+          if ui.button('     Delete') then
+            removeComment(v.commentID, true)
+            item.statComments = item.statComments - 1
+          end
+          ui.addIcon(ui.Icons.Delete, iconSize, iconAlign)
+        end
+        ui.popFont()
+        
+        if disliked then ui.popStyleVar() end
+        ui.popID()
+        ui.offsetCursorY(12)
+        itemSize.y = ui.getCursorY() - y
+      else
+        ui.offsetCursorY(commentSize.y)
+      end
+    end
+    if scrollCommentsDown then
+      ui.setScrollY(1e9, false, true)
+    end
+  end)
+
+  local _, submitted
+  comment, _, submitted = ui.inputText('Add a comment…', comment, ui.InputTextFlags.Placeholder)
+  if ui.isWindowAppearing() or scrollCommentsDown then
+    ui.setKeyboardFocusHere(-1)
+    if #comments == commentsTotalCount or ui.windowScrolling() then
+      scrollCommentsDown = false
+    end
+  end
+  ui.sameLine(0, 4)
+  local canSend = #comment:trim() > 0 and not currentlySubmittingComment and sessionID ~= nil
+  if (ui.button('Send', vec2(ui.availableSpaceX(), 0), canSend and 0 or ui.ButtonFlags.Disabled) or submitted) and canSend then
+    currentlySubmittingComment = true
+    rest('POST', 'comments', {setupID = item.setupID, userName = stored.userName, data = comment:trim()}, function (response)
+      currentlySubmittingComment = false
+      ui.toast(ui.Icons.Settings, 'Comment posted', function ()
+        removeComment(response.commentID)
+        item.statComments = item.statComments - 1
+      end)
+      listOfComments = nil
+      discussingComments[item.setupID] = '' 
+      item.statComments = item.statComments + 1
+    end, function (err)
+      currentlySubmittingComment = false
+      ui.toast(ui.Icons.Warning, 'Failed to post a comment: '..err)
+    end)
+  end
+  if ui.itemHovered() and sessionID == nil then
+    ui.setTooltip(sessionError or 'Connecting…')
+  end
+  discussingComments[item.setupID] = comment
+end
+
 local function windowGeneric()
-  if discussingItem then
+  if discussingItem and not v2 then
     if ui.button('    Back') then
       discussingItem = nil
       listOfComments = nil
@@ -408,91 +665,9 @@ local function windowGeneric()
     ui.addIcon(ui.Icons.ArrowLeft, iconSize, iconAlign, rgbm.colors.white)
 
     local item = discussingItem
-    local comment = discussingComments[item.setupID] or ''
     ui.sameLine()
     ui.text('Comments ('..item.name..' by '..item.userName..')')
-
-    local comments = refreshComments()
-    if not comments then
-      ui.drawLoadingSpinner(ui.windowSize() / 2 - 20, ui.windowSize() / 2 + 20)
-      -- ui.text('Loading list of comments…')
-      return
-    end
-
-    if type(comments) == 'string' then
-      ui.text('Failed to load comments:')
-      ui.text(comments)
-      return
-    end
-
-    ui.childWindow('commentsScroll', ui.availableSpace():sub(vec2(0, 40)), function ()
-      ui.offsetCursorY(8)
-      for _, v in ipairs(comments) do
-        if ui.areaVisible(commentSize) then
-          local y = ui.getCursorY()
-          ui.pushID(v.commentID)
-          local disliked = v.statDislikes > v.statLikes + 1
-          if disliked then ui.pushStyleVarAlpha(0.5) end
-          ui.pushFont(ui.Font.Small)
-          if v.userID == ownUserID then ui.pushStyleColor(ui.StyleColor.Text, ownColor) end
-          ui.text(v.userName)
-          if v.userID == ownUserID then ui.popStyleColor() end
-          ui.sameLine(0, 0)
-          ui.text(string.format(' • %s', os.date('%Y/%m/%d %H:%M', v.createdDate)))
-          ui.popFont()
-
-          ui.text(v.data)
-
-          ui.pushFont(ui.Font.Small)
-          if ui.button('     Reply') then
-            comment = '@'..v.userName..' '..comment
-          end
-          ui.addIcon(ui.Icons.Undo, iconSize, iconAlign)
-
-          ui.sameLine(0, 4)
-          likeButtons('comment-likes', v, likedComments, dislikedComments, v.commentID, {setupID = item.setupID})
-
-          if v.userID == ownUserID then
-            ui.sameLine(0, 4)
-            if ui.button('     Delete') then
-              removeComment(v.commentID)
-              item.statComments = item.statComments - 1
-            end
-            ui.addIcon(ui.Icons.Delete, iconSize, iconAlign)
-          end
-          ui.popFont()
-          
-          if disliked then ui.popStyleVar() end
-          ui.popID()
-          ui.offsetCursorY(12)
-          itemSize.y = ui.getCursorY() - y
-        else
-          ui.offsetCursorY(commentSize.y)
-        end
-      end
-    end)
-
-    local _, submitted
-    comment, _, submitted = ui.inputText('Add a comment…', comment, ui.InputTextFlags.Placeholder)
-    ui.sameLine(0, 4)
-    local canSend = #comment:trim() > 0 and not currentlySubmittingComment
-    if (ui.button('Send', vec2(ui.availableSpaceX(), 0), canSend and 0 or ui.ButtonFlags.Disabled) or submitted) and canSend then
-      currentlySubmittingComment = true
-      rest('POST', 'comments', { setupID = item.setupID, userName = stored.userName, data = comment:trim() }, function (response)
-        currentlySubmittingComment = false
-        ui.toast(ui.Icons.Settings, 'Comment posted', function ()
-          removeComment(response.commentID)
-          item.statComments = item.statComments - 1
-        end)
-        listOfComments = nil
-        discussingComments[item.setupID] = ''
-        item.statComments = item.statComments + 1
-      end, function (err)
-        currentlySubmittingComment = false
-        ui.toast(ui.Icons.Warning, 'Failed to post a comment: '..err)
-      end)
-    end
-    discussingComments[item.setupID] = comment
+    commentsBlock()
     return
   end
 
@@ -504,23 +679,53 @@ local function windowGeneric()
   end
 
   if type(setups) == 'string' then
+    if v3 then ui.pushAlignment(true) end
     ui.text('Failed to load setups:')
     ui.text(setups)
     ui.setNextItemIcon(ui.Icons.Restart)
     if ui.button('Try again', vec2(-0.1, 0)) then
-      setups = nil
+      listOfSetups = nil
     end
+    if v3 then ui.popAlignment() end
     return
   end
 
   ui.alignTextToFramePadding()
-  ui.header('Found setups:')
+  if authorUsernameFilter ~= '' then
+    if ui.button('    Back') then
+      authorUsernameFilter = ''
+      listOfSetups = nil
+      return
+    end
+    ui.addIcon(ui.Icons.ArrowLeft, iconSize, iconAlign, rgbm.colors.white)
+    ui.sameLine()
+    local n = string.format('%d setup%s by %s:', setupsTotalCount, setupsTotalCount == 1 and '' or 's', authorUsernameFilter)
+    if v2 and authorUsernameFilter == stored.userName then
+      local f = string.find(n, authorUsernameFilter)
+      if f then
+        ui.setNextTextSpanStyle(f, f + #authorUsernameFilter, ownColor)
+      end
+    end
+    ui.header(n)
+  elseif searchFilter ~= '' then
+    if ui.button('    Back') then
+      searchFilter = ''
+      listOfSetups = nil
+      return
+    end
+    ui.addIcon(ui.Icons.ArrowLeft, iconSize, iconAlign, rgbm.colors.white)
+    ui.sameLine()
+    ui.header(string.format('%d setup%s matching “%s”:', setupsTotalCount, setupsTotalCount == 1 and '' or 's', searchFilter))
+  else
+    ui.header(string.format('%d fitting setup%s:', setupsTotalCount, setupsTotalCount == 1 and '' or 's'))
+  end
 
   ui.pushFont(ui.Font.Small)
   ui.sameLine(0, 0)
   ui.offsetCursorX(ui.availableSpaceX() - 144)
   ui.setNextItemWidth(120)
-  ui.combo('##sort', setupsOrder[stored.setupsOrder][1], function ()
+  ui.combo('##sort', setupsOrder[stored.setupsOrder][1], ui.ComboFlags.HeightLarge, function ()
+    ui.pushFont(ui.Font.Main)
     if ui.checkbox('Show setups for current track only', stored.setupsFilterTrack) then
       stored.setupsFilterTrack = not stored.setupsFilterTrack
       listOfSetups = nil
@@ -534,27 +739,61 @@ local function windowGeneric()
         listOfSetups = nil
       end
     end
+    ui.offsetCursorY(12)
+    ui.header('Search:')
+    local updated, _, enter = ui.inputText('Name or author', searchFilter, bit.bor(ui.InputTextFlags.Placeholder, ui.InputTextFlags.CtrlEnterForNewLine))
+    if enter then
+      searchFilter = updated
+      listOfSetups = nil
+    end
+    ui.popFont()
   end)
   ui.sameLine(0, 4)
-  ui.button('…')
-  ui.itemPopup(ui.MouseButton.Left, function ()
-    ui.text('Your name: '..stored.userName)
-    if ui.selectable('Change name', false) then
-      ui.modalPrompt('Change name', 'New name:', stored.userName, function (newName)
-        if not newName or #newName:trim() == 0 then return end
-        rest('POST', 'user', { userName = newName:trim() }, function ()
-          ui.toast(ui.Icons.Confirm, 'Name changed')
-          stored.userName = newName:trim()
-          listOfSetups = nil
-        end, function (err)
-          ui.toast(ui.Icons.Warning, 'Couldn’t change name: '..err)
+  if ui.button('…') and v2 then
+    ui.popup(function ()
+      ui.text('Your name: '..stored.userName)
+      if ui.selectable('Change name', false) then
+        ui.modalPrompt('Change name', 'New name:', stored.userName, function (newName)
+          if not newName or #newName:trim() == 0 then return end
+          rest('POST', 'user', { userName = newName:trim() }, function ()
+            ui.toast(ui.Icons.Confirm, 'Name changed')
+            stored.userName = newName:trim()
+            listOfSetups = nil
+          end, function (err)
+            ui.toast(ui.Icons.Warning, 'Couldn’t change name: '..err)
+          end)
         end)
-      end)
-    end
-    if ui.itemHovered() then
-      ui.setTooltip('Changing name would also change it for all published content')
-    end
-  end)
+      end
+      if ui.itemHovered() then
+        ui.setTooltip('Changing name would also change it for all published content')
+      end
+      ui.separator()
+      if ui.selectable('Your setups…') then
+        authorUsernameFilter = stored.userName
+        listOfSetups = nil
+      end
+    end, {position = ui.windowPos() + ui.itemRectMin() + vec2(0, 20)})
+  end
+  if not v2 then
+    ui.itemPopup(ui.MouseButton.Left, function ()
+      ui.text('Your name: '..stored.userName)
+      if ui.selectable('Change name', false) then
+        ui.modalPrompt('Change name', 'New name:', stored.userName, function (newName)
+          if not newName or #newName:trim() == 0 then return end
+          rest('POST', 'user', { userName = newName:trim() }, function ()
+            ui.toast(ui.Icons.Confirm, 'Name changed')
+            stored.userName = newName:trim()
+            listOfSetups = nil
+          end, function (err)
+            ui.toast(ui.Icons.Warning, 'Couldn’t change name: '..err)
+          end)
+        end)
+      end
+      if ui.itemHovered() then
+        ui.setTooltip('Changing name would also change it for all published content')
+      end
+    end)
+  end
   ui.popFont()
 
   ui.childWindow('scroll', ui.availableSpace():sub(vec2(0, 40)), function ()
@@ -563,8 +802,15 @@ local function windowGeneric()
       ui.text('<None>')
       return
     end
-    for _, v in ipairs(setups) do
-      if ui.areaVisible(itemSize) then
+    local f = 1 + math.floor(ui.getScrollY() / itemSize.y)
+    local t = 1 + math.floor((ui.getScrollY() + ui.windowHeight()) / itemSize.y)
+    if t > #setups then
+      loadMoreSetups()
+    end
+    for i = f, math.min(t, #setups) do
+      local v = setups[i]
+      if v then
+        ui.setCursorY(itemSize.y * (i - 1))
         local y = ui.getCursorY()
         ui.pushID(v.setupID)
 
@@ -578,16 +824,30 @@ local function windowGeneric()
         ui.popFont()
         ui.pushFont(ui.Font.Small)
 
-        ui.sameLine(0, 0)
-        ui.offsetCursorY(10)
-        ui.text('  by ')
-        ui.sameLine(0, 0)
-        if v.userID == ownUserID then ui.pushStyleColor(ui.StyleColor.Text, ownColor) end
-        ui.text(v.userName)
-        if v.userID == ownUserID then ui.popStyleColor() end
-        ui.offsetCursorY(-10)
+        if authorUsernameFilter == '' then
+          ui.sameLine(0, 0)
+          ui.offsetCursorY(10)
+          ui.text(' by ')
+          ui.sameLine(0, 0)
+          if v.userID == ownUserID then ui.pushStyleColor(ui.StyleColor.Text, ownColor) end
+          ui.text(v.userName)
+          if ui.itemHyperlink(v.userID == ownUserID and ownColor or rgbm.colors.white) then
+            authorUsernameFilter = v.userName
+            listOfSetups = nil
+          end
+          if v.userID == ownUserID then ui.popStyleColor() end
+          ui.offsetCursorY(-10)
+        end
         
-        if not stored.setupsFilterTrack then
+        if authorUsernameFilter ~= '' then
+          ui.text('Car:')
+          ui.sameLine(80)
+          if v.carID == mainCarID then ui.pushStyleColor(ui.StyleColor.Text, ownColor) end
+          ui.text(v.carID)
+          if v.carID == mainCarID then ui.popStyleColor() end
+        end
+        
+        if authorUsernameFilter ~= '' or not stored.setupsFilterTrack then
           ui.text('Track:')
           ui.sameLine(80)
           ui.text(trackNames[v.trackID] or v.trackID)
@@ -610,14 +870,16 @@ local function windowGeneric()
         ui.endGroup()
         if ui.itemHovered() then
           local tooltip = getSetupTooltip(v)
+          ui.pushStyleVar(ui.StyleVar.Alpha, 1)
           if tooltip then
             ui.setTooltip(v.name:trim()..'\n\n'..tooltip)
           else
             ui.setTooltip(v.name:trim())
           end
+          ui.popStyleVar()
         end
 
-        if ac.isSetupAvailableToEdit() then
+        if ac.isSetupAvailableToEdit() and v.carID == mainCarID then
           if ui.button('     Apply', not currentlyApplying and 0 or ui.ButtonFlags.Disabled) then
             currentlyApplying = true
             getSetupData(v, true, function (err, data)
@@ -637,31 +899,84 @@ local function windowGeneric()
           end
           ui.addIcon(icons.Download, iconSize, iconAlign)
           if ui.itemHovered() then
+            ui.pushStyleVar(ui.StyleVar.Alpha, 1)
             ui.setTooltip('Setup will be instantly applied (with an option to revert back). To download setup, use context menu.')
+            ui.popStyleVar()
           end
-          ui.itemPopup(function ()
-            if ui.selectable('Download', downloadedAsFiles[v.setupID]) then
-              downloadSetupAsFile(v)
-            end
-          end)
+          ui.pushStyleVar(ui.StyleVar.Alpha, 1)
+          if not v2 then
+            ui.itemPopup(function ()
+              if ui.selectable('Download', downloadedAsFiles[v.setupID]) then
+                downloadSetupAsFile(v)
+              end
+            end)
+          elseif ui.itemClicked(ui.MouseButton.Right, true) then
+            ui.popup(function ()
+              if ui.selectable('Download', downloadedAsFiles[v.setupID]) then
+                downloadSetupAsFile(v)
+              end
+            end)
+          end
+          ui.popStyleVar()
         else
           if ui.button('Download', downloadedAsFiles[v.setupID] and ui.ButtonFlags.Active or not currentlyApplying and 0 or ui.ButtonFlags.Disabled) then
             downloadSetupAsFile(v)
           end
           if ui.itemHovered() then
-            ui.setTooltip('Unable to apply setup directly outside of setup menu, but it can be loaded. Use settings to enable Setup Exchange window in setup menu.')
+            ui.pushStyleVar(ui.StyleVar.Alpha, 1)
+            ui.setTooltip(v.carID == mainCarID 
+              and 'Unable to apply setup directly outside of setup menu, but it can be loaded. Use settings to enable Setup Exchange window in setup menu.'
+              or 'This setup is for a different car, but you can download it and use it in the next race.')
+            ui.popStyleVar()
           end
         end
 
         ui.sameLine(0, 4)
-        likeButtons('likes', v, likedSetups, dislikedSetups, v.setupID, {carID = ac.getCarID(0)})
+        likeButtons('likes', v, likedSetups, dislikedSetups, v.setupID, {carID = mainCarID})
 
         ui.sameLine(0, 4)
         if ui.button(string.format('     %d##comments', v.statComments)) then
-          discussingItem = v
+          if discussingItem == v then
+            discussingItem = nil
+          else
+            discussingItem = v
+            if v2 then
+              listOfComments = nil
+              listOfCommentsPrev = nil
+              local closeCounter = 0
+              ui.popup(function ()
+                if discussingItem ~= v or closeCounter > 1 then
+                  ui.closePopup()
+                  return
+                end
+                if not ui.windowFocused() then
+                  closeCounter = closeCounter + 1
+                else
+                  closeCounter = 0
+                end
+                commentsBlock()
+              end, {
+                size = {initial = vec2(400, 280)},
+                position = ui.itemRectMin() + ui.windowPos() + vec2(0, 20 - ui.getScrollY()),
+                padding = vec2(12, 0),
+                title = 'Comments ('..v.name:trim()..' by '..v.userName..')',
+                backgroundColor = ui.styleColor(ui.StyleColor.PopupBg),
+                flags = ui.WindowFlags.NoCollapse,
+                onClose = function ()
+                  if discussingItem == v then
+                    discussingItem = nil
+                  end
+                end
+              })
+            end
+          end
         end
         ui.addIcon(icons.Comments, iconSize, iconAlign)
-        if ui.itemHovered() then ui.setTooltip(string.format('Comments: %d', v.statComments)) end
+        if ui.itemHovered() then
+          ui.pushStyleVar(ui.StyleVar.Alpha, 1)
+          ui.setTooltip(string.format('Comments: %d', v.statComments))
+          ui.popStyleVar()
+        end
 
         if v.userID == ownUserID then
           ui.sameLine(0, 4)
@@ -678,25 +993,27 @@ local function windowGeneric()
         ui.offsetCursorY(12)
         ui.popID()
         itemSize.y = ui.getCursorY() - y
-      else
-        ui.offsetCursorY(itemSize.y)
       end
     end
+    ui.setMaxCursorY(8 + math.max(setupsTotalCount, #setups) * itemSize.y)
   end)
 
   ui.offsetCursorY(12)
-  if ui.button('Share current setup', vec2(ui.availableSpaceX(), 0)) then
+  if v2 then
+    ui.setNextItemIcon(ui.Icons.Settings)
+  end
+  if ui.button('Share current setup', vec2(ui.availableSpaceX(), 0), sessionID ~= nil and 0 or ui.ButtonFlags.Disabled) then
     ui.modalPrompt('Share setup', 'Name the setup:', nil, 'Share', 'Cancel', nil, nil, function (name)
-      if name then
-        shareSetup(name)
+      if name and #name:trim() > 0 then
+        shareSetup(name:trim())
       end
     end)
   end
-  if ui.itemHovered() then
-    ui.setTooltip('Your name: '..ac.getDriverName(0))
+  if ui.itemHovered() and sessionID == nil then
+    ui.setTooltip(sessionError or 'Connecting…')
   end
 end
-
+ 
 local introHeight = 100
 
 function script.windowMain()
