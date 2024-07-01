@@ -5,7 +5,7 @@
 local mainCarID = ac.getCarID(0)
 local v2 = const(ac.getPatchVersionCode() >= 3044)
 local v3 = const(ac.getPatchVersionCode() >= 3050)
-local endpoint = 'http://se.api.acstuff.ru'
+local endpoint = require('Config').endpoint
 -- local endpoint = 'http://127.0.0.1:12016'
 local temporaryName = ac.getFolder(ac.FolderID.AppDataLocal)..'/Temp/ac-se-shared.ini'
 local temporaryBackupName = ac.getFolder(ac.FolderID.AppDataLocal)..'/Temp/ac-se-backup.ini'
