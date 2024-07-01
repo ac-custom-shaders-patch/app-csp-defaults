@@ -9,7 +9,6 @@ local endpoint = 'http://se.api.acstuff.ru'
 -- local endpoint = 'http://127.0.0.1:12016'
 local temporaryName = ac.getFolder(ac.FolderID.AppDataLocal)..'/Temp/ac-se-shared.ini'
 local temporaryBackupName = ac.getFolder(ac.FolderID.AppDataLocal)..'/Temp/ac-se-backup.ini'
-local trackNames = {}
  
 if not v2 then
   local json = require 'lib/json'
@@ -19,6 +18,7 @@ if not v2 then
   }
 end
 
+local trackNames = {}
 do
   local cfg = ac.INIConfig.load(ac.getFolder(ac.FolderID.ExtCfgSys)..'/data_track_params.ini', ac.INIFormat.Extended)
   for k, v in pairs(cfg.sections) do
@@ -723,6 +723,9 @@ local function windowGeneric()
   ui.pushFont(ui.Font.Small)
   ui.sameLine(0, 0)
   ui.offsetCursorX(ui.availableSpaceX() - 144)
+  if ui.availableSpaceX() < 144 then
+    ui.newLine(0)
+  end
   ui.setNextItemWidth(120)
   ui.combo('##sort', setupsOrder[stored.setupsOrder][1], ui.ComboFlags.HeightLarge, function ()
     ui.pushFont(ui.Font.Main)
@@ -799,7 +802,7 @@ local function windowGeneric()
   ui.childWindow('scroll', ui.availableSpace():sub(vec2(0, 40)), function ()
     ui.offsetCursorY(8)
     if #setups == 0 then
-      ui.text('<None>')
+      ui.textDisabled('No fitting setups available yet.')
       return
     end
     local f = 1 + math.floor(ui.getScrollY() / itemSize.y)
@@ -932,7 +935,7 @@ local function windowGeneric()
         end
 
         ui.sameLine(0, 4)
-        likeButtons('likes', v, likedSetups, dislikedSetups, v.setupID, {carID = mainCarID})
+        likeButtons('likes', v, likedSetups, dislikedSetups, v.setupID, {carID = v.carID})
 
         ui.sameLine(0, 4)
         if ui.button(string.format('     %d##comments', v.statComments)) then
@@ -1013,7 +1016,7 @@ local function windowGeneric()
     ui.setTooltip(sessionError or 'Connecting…')
   end
 end
- 
+
 local introHeight = 100
 
 function script.windowMain()
