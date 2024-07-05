@@ -7,6 +7,13 @@ local checkBoxSize = 20
 local checkBoxMargin = 5
 local checkBoxSizeV = vec2(checkBoxSize, checkBoxSize)
 
+local carSpecificPreset = controlsINI:get("__LAUNCHER_CM", "PRESET_NAME", "")
+local carSpecificPresetEnabled = controlsINI:get("__LAUNCHER_CM", "PRESET_CHANGED", -1) == 0
+
+if carSpecificPresetEnabled then
+	carSpecificPreset = string.replace(string.replace(carSpecificPreset, "savedSetups\\", ""), ".ini", "")
+end
+
 local function labelAligned(text, yOffset)
 	ui.textAligned(text, vec2(1, 1), vec2(100, 22))
 	ui.sameLine()
@@ -95,19 +102,13 @@ local function checkbox(controlBinding)
 end
 
 local function infoText()
-	local loadedCarPreset = string.gsub(
-		string.gsub(
-			string.gsub(controlsINI:get("__EXRA_CM", "PRESET_OVERRIDE", ""), "savedSetups\\", ""),
-			"savedsetups\\",
-			""
-		),
-		".ini",
-		""
-	)
-
-	if controlsINI:get("__EXRA_CM", "CAR_SPECIFIC", 0) == 1 then
-		if loadedCarPreset ~= "" then
-			ui.textAligned("Car-Specific Controls: " .. loadedCarPreset, vec2(0.5, 0.5), vec2(ui.availableSpaceX(), 30))
+	if carSpecificPresetEnabled then
+		if carSpecificPreset ~= "" then
+			ui.textAligned(
+				"Car-Specific Controls: " .. carSpecificPreset,
+				vec2(0.5, 0.5),
+				vec2(ui.availableSpaceX(), 30)
+			)
 		end
 	else
 		ui.textAligned("", vec2(0.5, 0.5), vec2(ui.availableSpaceX(), 30))
@@ -141,7 +142,7 @@ local function helpInfoButton(controlBinding)
 	end
 end
 
-local function bindingBoxes(label, button, yOffset)
+local function bindingBoxes(label, button, bind, yOffset)
 	local controlButtonFlags = ui.ControlButtonControlFlags.None
 
 	-- if global then
@@ -149,7 +150,21 @@ local function bindingBoxes(label, button, yOffset)
 	-- end
 
 	ui.setCursorX(WINDOW_MARGIN)
-	labelAligned(label .. ":", yOffset)
+
+	if string.find(bind, "__EXT_LIGHT") then
+		if ui.button(label, vec2(100, 32), ui.ButtonFlags.None) then
+			ac.simulateCustomHotkeyPress(bind)
+			ac.trySimKeyPressCommand(bind)
+		end
+		if ui.itemHovered(ui.HoveredFlags.None) and ui.itemActive() then
+			ac.simulateCustomHotkeyPress(bind)
+			ac.trySimKeyPressCommand(bind)
+		end
+	else
+		labelAligned(label .. ":", yOffset)
+	end
+
+	ui.sameLine()
 
 	button:control(vec2(ui.windowWidth() - WINDOW_MARGIN - ui.getCursorX(), 32), controlButtonFlags)
 end
@@ -170,7 +185,7 @@ local function buttonBinder(controlBinding)
 	)
 
 	if controlBinding.isActivationBind then
-		bindingBoxes(controlBinding.activationLabel, controlBinding.button)
+		bindingBoxes(controlBinding.activationLabel, controlBinding.button, controlBinding.bind)
 
 		return
 	end
@@ -181,15 +196,15 @@ local function buttonBinder(controlBinding)
 
 	if controlBinding.isMultiPositionSwitchBind and controlBinding.mpsToggle then
 		for index, button in ipairs(controlBinding.buttonPosition) do
-			bindingBoxes(controlBinding.buttonPositionLabel[index], button)
+			bindingBoxes(controlBinding.buttonPositionLabel[index], button, controlBinding.bind)
 		end
 
 		return
 	end
 
 	if controlBinding.isSequentialBind then
-		bindingBoxes(controlBinding.buttonUpLabel, controlBinding.buttonUp, 8)
-		bindingBoxes(controlBinding.buttonDownLabel, controlBinding.buttonDown, 8)
+		bindingBoxes(controlBinding.buttonUpLabel, controlBinding.buttonUp, controlBinding.bind, 8)
+		bindingBoxes(controlBinding.buttonDownLabel, controlBinding.buttonDown, controlBinding.bind, 8)
 	end
 end
 
