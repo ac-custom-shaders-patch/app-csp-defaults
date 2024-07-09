@@ -487,7 +487,7 @@ App = {
   end,
 
   pauseEvents = function ()
-    App.pauseEventsUntil = os.preciseClock()
+    App.pauseEventsUntil = ui.frameCount() + 3
   end,
 
   ---@param fn fun(url: string, attributes: table, extraTweaks: ExtraTabTweaks?): WebBrowser

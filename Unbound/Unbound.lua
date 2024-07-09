@@ -16,6 +16,13 @@ local extraHints = table.range(6, function (index)
   return r
 end)
 
+if not ac.getCarGearLabel then
+  ac.getCarGearLabel = function (index)
+    local gear = index == 0 and car.gear or ac.getCar(index).gear
+    return gear < 0 and 'R' or gear == 0 and 'N' or tostring(gear)
+  end
+end
+
 local controlsConfig = ac.INIConfig.controlsConfig()
 local controlsBindings = {}
 
@@ -367,7 +374,7 @@ local function blockCarDrive()
 
   ui.pushFont(ui.Font.Title)
   local c = ui.getCursor()
-  ui.textAligned(car.gear < 0 and 'R' or car.gear == 0 and 'N' or car.gear, 0.5, vec2(56, 44))
+  ui.textAligned(ac.getCarGearLabel(0), 0.5, vec2(56, 44))
   -- ui.pathLineTo(vec2(ui.itemRectMin().x, ui.itemRectMax().y))
   ui.pathArcTo(c + vec2(28, 23), 16, -2.4 - math.pi / 2, 2.4 - math.pi / 2, 20)
   ui.pathStroke(rgbm.colors.gray, false, 1)

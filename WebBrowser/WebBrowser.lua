@@ -83,6 +83,8 @@ App.registerTabFactory(function(url, attributes, extraTweaks)
         drawCrash(p1, p2, tab)
       elseif key == 'loading' then
         drawLoading(p1, p2, tab)
+        -- flag `externalBeginFrameEnabled` makes things slow, but stable, this line is used for debugging browser views failing to come online
+        -- ui.drawTextClipped('LOADING!', p1, p2, rgbm.colors.red)
       else
         ui.drawRectFilled(p1, p2, tab:backgroundColor())
       end
@@ -195,7 +197,7 @@ local function browserBlock(tab, size, forceActive, windowFocused)
     tab:resize(lastSize)
   end
 
-  local alive = os.preciseClock() - App.pauseEventsUntil > 0.05
+  local alive = ui.frameCount() > App.pauseEventsUntil
   local mouseActive
   if pauseMouseInputs <= 0 then
     if alive then
@@ -261,6 +263,8 @@ local function browserBlock(tab, size, forceActive, windowFocused)
   end
 
   if not tab.attributes.windowTab then
+    ac.debug('keyboardState ~= nil', keyboardState ~= nil)
+    ac.debug('not alive', not alive)
     Controls.update(keyboardState ~= nil or not alive)
   end
   if keyboardState then
@@ -279,7 +283,7 @@ local function drawDevToolsTab(dtab, focus, targetSize)
   local size = p2:clone():sub(p1)
   dtab:resize(size)
 
-  local alive = os.preciseClock() - App.pauseEventsUntil > 0.05
+  local alive = ui.frameCount() > App.pauseEventsUntil
   if alive then
     if ui.windowFocused() then
       dtab:focus(keyboardState ~= nil) -- update browser focused state
@@ -379,6 +383,11 @@ function script.windowMain()
     end
   end
   tab.attributes.lastFocusTime = os.time()
+
+  -- if not _G.devToolsDebug then
+  --   _G.devToolsDebug = true
+  --   Utils.openDevTools(tab, true)
+  -- end
 
   if tab:fullscreen() or tab.attributes.fullscreen then
     if not exclusiveHUDListener and Storage.settings.properFullscreen and ui.onExclusiveHUD ~= nil then
