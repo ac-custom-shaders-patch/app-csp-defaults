@@ -133,6 +133,8 @@ local cfgControls = MappedConfig(ac.getFolder(ac.FolderID.Cfg)..'/controls.ini',
   __EXT_KEYBOARD_CLUTCH = { XBOXBUTTON = '' },
   __EXT_SIM_PAUSE = { XBOXBUTTON = '' },
   __CM_TO_PITS = { XBOXBUTTON = '' },
+  __EXT_WIPERS_LESS = { XBOXBUTTON = '' },
+  __EXT_WIPERS_MORE = { XBOXBUTTON = '' },
 })
 
 local cfgFFPostProcess = MappedConfig(ac.getFolder(ac.FolderID.Cfg)..'/ff_post_process.ini', {

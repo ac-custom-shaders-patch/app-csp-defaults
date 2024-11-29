@@ -1,3 +1,3 @@
 return {
-  endpoint = 'http://se.api.acstuff.ru'
+  endpoint = 'http://se.acstuff.club'
 }
