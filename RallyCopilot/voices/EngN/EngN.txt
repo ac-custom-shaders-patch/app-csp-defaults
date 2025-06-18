@@ -1,0 +1,112 @@
+helper/and, , EngN.mp3, 45.302133325246, 46.067
+helper/and, , EngN.mp3, 46.23, 47.035
+helper/and, , EngN.mp3, 47.18, 48.048
+helper/and, , EngN.mp3, 96.87, 97.243
+helper/and, , EngN.mp3, 97.959, 98.2
+left/hairpin, , EngN.mp3, 32.914439456863, 33.383
+left/hairpin, , EngN.mp3, 33.73234344939, 34.327003479004
+left/hairpin, , EngN.mp3, 34.575032411388, 35.318000793457
+left/two, , EngN.mp3, 27.585671020699, 28
+left/two, , EngN.mp3, 28.104, 28.7
+left/two, , EngN.mp3, 28.924059372108, 29.264
+left/two, , EngN.mp3, 29.49411366993, 30.113000869751
+left/three, , EngN.mp3, 21.141578958361, 21.61
+left/three, , EngN.mp3, 21.885128042477, 22.403
+left/three, , EngN.mp3, 22.678247065534, 23.173
+left/three, , EngN.mp3, 23.42179614965, 23.841
+left/four, , EngN.mp3, 15.341896102258, 15.911001205444
+left/four, , EngN.mp3, 16.184585064256, 16.678
+left/four, , EngN.mp3, 16.752, 17.223
+left/four, , EngN.mp3, 17.473403476723, 17.942
+left/five, , EngN.mp3, 8.9969439178021, 9.7400007247925
+left/five, , EngN.mp3, 9.8644178492706, 10.533000946045
+left/five, , EngN.mp3, 11.401085956443, 12.1
+left/six, , EngN.mp3, 3.1476911227572, 3.7
+left/six, , EngN.mp3, 3.9903800847552, 4.46
+left/six, , EngN.mp3, 4.7091441994005, 5.1
+left/six, , EngN.mp3, 5.3287684361638, 5.8240003585815
+right/hairpin, , EngN.mp3, 30.262447723516, 30.87
+right/hairpin, , EngN.mp3, 31.030781777102, 31.723
+right/hairpin, , EngN.mp3, 31.897, 32.666000366211
+right/two, , EngN.mp3, 24.066205355884, 24.8
+right/two, , EngN.mp3, 24.983249226293, 25.6
+right/two, , EngN.mp3, 25.850723157762, 26.495000839233
+right/two, , EngN.mp3, 26.643842180819, 27.187
+right/three, , EngN.mp3, 18.142597652427, 18.636
+right/three, , EngN.mp3, 18.711, 19.38
+right/three, , EngN.mp3, 20.348459935304, 20.917
+right/four, , EngN.mp3, 12.293344857382, 12.8
+right/four, , EngN.mp3, 12.961, 13.531
+right/four, , EngN.mp3, 13.705, 14.374
+right/four, , EngN.mp3, 14.5, 15.168001174927
+right/five, , EngN.mp3, 6.715, 7.3
+right/five, , EngN.mp3, 7.409, 8.1040000915527
+right/five, , EngN.mp3, 8.1542549558041, 8.821
+right/six, , EngN.mp3, 0.86747393146852, 1.4870001077652
+right/six, , EngN.mp3, 1.5862380461139, 2.259
+right/six, , EngN.mp3, 2.378, 3
+straight/20 m, , EngN.mp3, 65.192322924142, 65.701
+straight/20 m, , EngN.mp3, 74.963591473996, 75.425
+straight/30 m, , EngN.mp3, 66.1, 66.43
+straight/30 m, , EngN.mp3, 75.705, 76.208
+straight/40 m, , EngN.mp3, 66.854786532408, 67.125
+straight/40 m, , EngN.mp3, 76.508, 77.031
+straight/50 m, , EngN.mp3, 67.548, 68
+straight/50 m, , EngN.mp3, 77.299, 77.8
+straight/70 m, , EngN.mp3, 68.261, 68.614
+straight/70 m, , EngN.mp3, 78.154812637146, 78.656
+straight/100 m, , EngN.mp3, 69.038, 69.6
+straight/200 m, , EngN.mp3, 69.925, 70.416999816895
+straight/200 m, , EngN.mp3, 79.88, 80.523
+straight/300 m, , EngN.mp3, 70.898, 71.447
+straight/300 m, , EngN.mp3, 80.883, 81.526
+straight/400 m, , EngN.mp3, 71.866, 72.473
+straight/400 m, , EngN.mp3, 81.887939280831, 82.591
+straight/500 m, , EngN.mp3, 72.84, 73.323
+straight/500 m, , EngN.mp3, 82.971750241901, 83.594
+hints/cut, , EngN.mp3, 37.85, 38.589
+hints/cut, , EngN.mp3, 39.382, 39.75
+hints/do not cut, , EngN.mp3, 36.239, 36.789
+hints/do not cut, , EngN.mp3, 37.2, 37.779
+hints/long, , EngN.mp3, 40.077247699268, 40.667
+hints/long, , EngN.mp3, 40.730358402515, 41.35
+hints/long, , EngN.mp3, 41.361, 42.192
+hints/very long, , EngN.mp3, 42.211, 43.183
+hints/very long, , EngN.mp3, 43.342801215504, 43.995002746582
+hints/very long, , EngN.mp3, 43.995911918752, 45.204
+hints/tightens, , EngN.mp3, 62.499765421693, 63.302
+hints/tightens, , EngN.mp3, 63.402941222585, 64.045
+hints/tightens, , EngN.mp3, 64.425, 64.868
+hints/open, , EngN.mp3, 88.1, 88.533004760742
+hints/open, , EngN.mp3, 88.838, 89.424
+hints/open, , EngN.mp3, 89.587, 90.042
+hints/caution, , EngN.mp3, 73.864, 74.6
+hints/caution, , EngN.mp3, 84.548149220381, 85.06
+hints/caution, , EngN.mp3, 83.976, 84.488006591797
+hints/keep left, , EngN.mp3, 58.245599989602, 58.854
+hints/keep left, , EngN.mp3, 59.095, 59.608
+hints/keep right, , EngN.mp3, 54.999, 55.707
+hints/keep right, , EngN.mp3, 56.583136381336, 57.214
+miscellaneous/big jump, , EngN.mp3, 52.664472161852, 53.214
+miscellaneous/jump, , EngN.mp3, 50.667, 50.839
+miscellaneous/jump, , EngN.mp3, 51.239503354767, 51.692
+miscellaneous/jump, , EngN.mp3, 52.0707351589, 52.364
+miscellaneous/overcrest, , EngN.mp3, 48.270818340007, 48.855
+miscellaneous/overcrest, , EngN.mp3, 49.339544945321, 50.230003356934
+miscellaneous/narrows, , EngN.mp3, 85.262230797056, 86.057
+miscellaneous/narrows, , EngN.mp3, 86.420870224354, 87.07
+miscellaneous/narrows, , EngN.mp3, 87.102422828647, 87.824
+on/tarmac, , EngN.mp3, 93.236396267285, 94.226
+on/tarmac, , EngN.mp3, 94.395035694583, 95.353
+on/tarmac, , EngN.mp3, 95.553675121881, 96.407
+on/gravel, , EngN.mp3, 90.337, 91.128
+on/gravel, , EngN.mp3, 91.532514756552, 92.145004272461
+on/gravel, , EngN.mp3, 92.282222621274, 93.104
+extras/finish, , EngN.mp3, 100.30357807997, 101.21300506592
+extras/finish, , EngN.mp3, 101.49150000759, 102.31200408936
+extras/finish, , EngN.mp3, 102.76788420642, 103.57600402832
+extras/start/get ready…, , EngN_extras.mp3, 0.3103163809691, 0.92400002479553
+extras/start/3…, , EngN_extras.mp3, 1.5845942857997, 1.9010001420975
+extras/start/2…, , EngN_extras.mp3, 2.5253508572795, 2.9160002326965
+extras/start/1…, , EngN_extras.mp3, 3.2946356192252, 3.6570000648499
+extras/start/go!, , EngN_extras.mp3, 3.9811005716442, 4.5900003433228
