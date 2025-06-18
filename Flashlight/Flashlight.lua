@@ -33,13 +33,14 @@ function script.windowMain(dt)
   storage.sharpness = ui.slider('##sharpness', storage.sharpness * 100, 0, 100, 'Sharpness: %.1f%') / 100
   storage.range = ui.slider('##range', storage.range, 0, 100, 'Range: %.1f m')
 
-  light.spot = storage.spot
+  light.spot = storage.spot 
   light.spotSharpness = storage.sharpness
   light.range = storage.range
   light.rangeGradientOffset = 0
   
   light.shadows = true
   light.shadowsRange = light.range
+  light.showInReflections = true
 
   ui.popItemWidth()
   ui.endGroup()
