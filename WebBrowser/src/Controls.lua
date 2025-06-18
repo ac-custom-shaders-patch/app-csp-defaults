@@ -47,6 +47,7 @@ local menuPivotY = 0
 local appMenuPivotX = 0
 local downloadsMenuPivotX = 0
 local tabsMenuPivotX = 0
+local privacyMenuPivotX = 0
 local bookmarksMenuPivotX = 0
 local passwordMenuPivotX = 0
 
@@ -74,9 +75,19 @@ end
 local ControlsBookmarks = require('src/ControlsBookmarks')
 
 ---@param toggle boolean
-local function showBookmarksMenu(toggle)
+local function showBookmarksMenu(toggle) 
   local x = bookmarksMenuPivotX == 0 and appMenuPivotX - 22 or bookmarksMenuPivotX
   ControlsBookmarks.showBookmarksMenu(toggle, lastWindowPos + vec2(x, menuPivotY))
+end
+
+local ControlsPermissions = require('src/ControlsPermissions')
+
+---@param originURL string
+---@param permissions WebBrowser.PermissionType[]
+---@param callback fun(result: boolean?)
+local function showPermissionPopup(originURL, permissions, callback)
+  local x = privacyMenuPivotX == 0 and 22 or privacyMenuPivotX
+  ControlsPermissions.showPermissionPopup(originURL, permissions, callback, lastWindowPos + vec2(x, menuPivotY))
 end
 
 local passwordPopup = Utils.uniquePopup()
@@ -389,7 +400,6 @@ end
 local function websitePrivacyMenu(tab, params)
   local url, data
   Utils.popup(function ()
-    Utils.noteActivePopup()
     ui.pushFont(ui.Font.Title)
     ui.text(tab:domain())
     ui.popFont()
@@ -419,6 +429,16 @@ local function websitePrivacyMenu(tab, params)
       if ui.selectable(state.secure and 'Connection is secure' or 'Connection is not secure', false) then
         WebUI.DefaultPopups.SSLStatus(tab)
       end
+
+      local permissions = ControlsPermissions.getPermissionsForDomain(url)
+      if permissions and next(permissions) then
+        local _, v = next(permissions)
+        ui.setNextItemIcon(v and ui.Icons.Verified or ui.Icons.Warning, nil, 0.3)
+        if ui.selectable('Permissions', false, 0) then
+          ControlsPermissions.managePermissions(url)
+        end
+      end
+
       ui.setNextItemIcon(ui.Icons.ListAlt, nil, 0.3)
       if ui.selectable('Cookies: %s' % (data and tostring(data) or '…'), false, data and 0 or ui.SelectableFlags.Disabled) and data then
         WebUI.DefaultPopups.Cookies(tab, data)
@@ -525,7 +545,15 @@ end
 
 local addressActive = false
 
----@param tab WebBrowser
+local function fullscreenBarLayout()
+  lastWindowPos = ui.windowPos()
+  menuPivotY = ui.getCursorY() + 8
+  privacyMenuPivotX = 0
+  bookmarksMenuPivotX = 0
+  passwordMenuPivotX = 0
+  appMenuPivotX = ui.windowWidth()
+end
+
 local function addressBar(tab)
   lastWindowPos = ui.windowPos()
   menuPivotY = ui.getCursorY() + 22
@@ -572,7 +600,12 @@ local function addressBar(tab)
   if Storage.settings.homeButton then
     ui.sameLine(0, 0)
     if ui.iconButton(ui.Icons.Home, addressBarButtonSize, 6) then
-      tab:navigate(Storage.settings.homePage == '' and WebBrowser.blankURL('newtab') or Storage.settings.homePage)
+      -- tab:navigate(Storage.settings.homePage == '' and WebBrowser.blankURL('newtab') or Storage.settings.homePage)
+      -- tab:loadHTML('<h1>Hello world!</h1>', 'test')
+      for _, v in ipairs(App.tabs) do
+        -- v:settings().softwareRendering = Storage.settings.softwareRendering   
+        v:restart()   
+      end
     end
     if ui.itemHovered() then
       ui.setTooltip('Home')
@@ -607,6 +640,7 @@ local function addressBar(tab)
   ui.pushStyleColor(ui.StyleColor.ButtonActive, rgbm.colors.transparent)
 
   local x = ui.getCursorX()
+  privacyMenuPivotX = x
   local pageState = tab:pageState()
   local addressIcon
   if not pageState or tab:url():sub(1, 4) ~= 'http' then
@@ -617,7 +651,7 @@ local function addressBar(tab)
     addressIcon = ui.Icons.Warning
   end
   if ui.iconButton(addressIcon, 22, ColAddressStatus, 7) then
-    websitePrivacyMenu(tab, {position = ui.windowPos() + vec2(x, ui.getCursorY()), pivot = vec2()})
+    websitePrivacyMenu(tab, {position = ui.windowPos() + vec2(x, menuPivotY), pivot = vec2()})
   end
   ui.popStyleColor(2)
   tabVec1:set(ui.itemRectMin())
@@ -804,6 +838,7 @@ local errorMessages = {
   ERR_ACEF_BOOTLOOP = {false, false, 'reinstall'},
   ERR_ACEF_FAILED_TO_START = {false, false, 'reinstall'},
   ERR_ACEF_INSTALLATION_ERROR = {false, false, 'reinstall'},
+  ERR_ACEF_BLOCKED = {'Requests filter has prevented the webpage from loading.', 'This URL is blocked', 'unblockMainRequests'},
 }
 
 ---@param p1 vec2
@@ -831,7 +866,7 @@ local function drawErrorMessage(p1, p2, loadError, tab)
       title = tab:crash() and 'Oh no!' or 'This site can’t be reached'
     end
     message = loadError.errorDetails or message and string.format(message, tab:domain()) 
-      or tab:crash() and 'Something went wrong while displaying this webpage2.' or 'Check your internet connection.'
+      or tab:crash() and 'Something went wrong while displaying this webpage.' or 'Check your internet connection.'
     status = loadError.errorText
   end
 
@@ -850,7 +885,7 @@ local function drawErrorMessage(p1, p2, loadError, tab)
   if ui.itemHovered() then
     ui.setMouseCursor(ui.MouseCursor.Hand)
     if ui.itemClicked(ui.MouseButton.Left, true) then
-      ui.setClipboardText(status)
+      ac.setClipboardText(status)
       ui.toast(ui.Icons.Copy, 'Error code “%s” is copied to the clipboard' % status)
     end
   end
@@ -874,6 +909,14 @@ local function drawErrorMessage(p1, p2, loadError, tab)
       WebBrowser.restartProcess(true)
     end
     ui.sameLine(0, 4)
+  elseif action == 'unblockMainRequests' then
+    ui.setNextItemIcon(ui.Icons.Confirm, rgbm.colors.orange)
+    ui.setNextTextSpanStyle(1, math.huge, rgbm.colors.orange)
+    if ui.button('Proceed', vec2(ui.availableSpaceX() / 2 - 2, 28)) then
+      tab:blockURLsOfMainFrame(false)
+      tab:reload(true)
+    end
+    ui.sameLine(0, 4)
   end
   ui.setNextItemIcon(ui.Icons.Restart)
   if ui.button(tab:crash() and 'Restart' or 'Reload', vec2(-0.1, 28)) then
@@ -881,6 +924,7 @@ local function drawErrorMessage(p1, p2, loadError, tab)
   end
   ui.popStyleVar()
   ui.setCursor(c)
+  ui.endGroup()
 end
 
 local v1 = vec2()
@@ -924,10 +968,12 @@ return {
   menuItem = menuItem,
   tabsBar = tabsBar,
   addressBar = addressBar,
+  fullscreenBarLayout = fullscreenBarLayout,
   addressBarBackgroundColor = ColTabSelected,
   showAppMenu = showAppMenu,
   showDownloadsMenu = showDownloadsMenu,
   showBookmarksMenu = showBookmarksMenu,
+  showPermissionPopup = showPermissionPopup,
   showTabsMenu = showTabsMenu,
   drawErrorMessage = drawErrorMessage,
   drawLoading = drawLoading,

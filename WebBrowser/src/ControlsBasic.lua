@@ -165,7 +165,8 @@ local function tabTooltip(tab)
   ui.textWrapped(tab:title(true), 360)
   ui.popFont()
   ui.text(tab:domain())
-  if true or not tab:loading() and (tab:blank() or not tab:loadError()) then
+  -- if not tab:loading() and (tab:blank() or not tab:loadError()) then
+  do -- drawing those previews always 
     ui.offsetCursorY(8)
     ui.offsetCursorX(-19)
     ui.pushClipRectFullScreen()

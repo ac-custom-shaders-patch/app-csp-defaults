@@ -1,24 +1,6 @@
 local App = require('src/App')
 local SearchProvider = require('src/SearchProvider')
-local Storage        = require('src/Storage')
-
----Some regular expression for filtering URLs for a demonstration.
-local webFilter = const(table.concat({
-  '\\.ad\\.gt\\b',
-  '\\.tapad\\.com\\b',
-  '\\.snigelweb\\.com/ad',
-  '\\.doubleclick\\.net',
-  '\\b(?:acuityplatform|adlightning|adnxs|adtng|adsrvr|amazon-adsystem|lijit|trafficjunky)\\.com\\b',
-  '\\b(?:trafficjunky\\.net|ayads\\.co|connectad\\.io)\\b',
-  '\\bgoogle(?:tagmanager|syndication|-analytics)\\.com\\b',
-  '\\bonetag-sys\\.com\\b',
-  '\\bpbstck\\.com\\b',
-  '\\bpubmatic\\.com\\b',
-  '\\bquant(?:cast|count|serve)\\.com\\b',
-  '\\brubiconproject\\.com\\b',
-  '\\bsmartadserver\\.com\\b',
-  '\\bsnack-media\\.com\\b',
-}, '|'))
+local Storage = require('src/Storage')
 
 local doNotTrackHeaders = {
   [''] = {
@@ -161,6 +143,10 @@ end
 
 local function anyActivePopup()
   return lastPopupFrame >= ui.frameCount()
+end
+
+local function popupJustClosed()
+  return lastPopupFrame == ui.frameCount()
 end
 
 local function maxPopupHeight()
@@ -307,6 +293,10 @@ local devToolsOpened = 0
 ---@param tab WebBrowser
 ---@param toggle boolean|'reuse'|'close'
 local function openDevTools(tab, toggle)
+  if not WebBrowser.devToolsTabSupported() then
+    tab:devToolsPopup()
+    return
+  end
   if  tab.attributes.devTools and toggle ~= 'reuse' or toggle == 'close' then
     if toggle then
       if tab.attributes.devTools then
@@ -383,7 +373,7 @@ return {
     downloads = function () return ac.getFolder('{374DE290-123F-4565-9164-39C4925E467B}') end,
     pictures = function () return ac.getFolder('{33E28130-4E1E-4676-835A-98395C3BC3BB}') end,
   },
-  webFilter = webFilter,
+  webFilter = WebBrowser.adsFilter(),
   doNotTrackHeaders = doNotTrackHeaders,
   readableDay = readableDay,
   openFromFile = openFromFile,
@@ -399,6 +389,7 @@ return {
   readableETA = readableETA,
   noteActivePopup = noteActivePopup,
   anyActivePopup = anyActivePopup,
+  popupJustClosed = popupJustClosed,
   maxPopupHeight = maxPopupHeight,
   estimateAccentColor = estimateAccentColor,
   openURLInSystemBrowser = openURLInSystemBrowser,

@@ -447,6 +447,7 @@ local function drawAppsTab(p1, p2, tab)
     ui.offsetCursorY(20)
     ui.thinScrollbarEnd()
   end)
+  ui.endGroup()
 end
 
 pinnedModule = {

@@ -69,7 +69,6 @@ local function onContextMenu(tab, data)
 
   -- Context menu, could be for a link, a resource, a editable text
   Utils.popup(function ()
-    Utils.noteActivePopup()
     ---@param label string
     ---@param hotkey string?
     ---@param flags integer?
@@ -87,6 +86,7 @@ local function onContextMenu(tab, data)
         if not App.canOpenMoreTabs() then ui.pushDisabled() end
         if item('Open in new tab') then App.addAndSelectTab(data.linkURL, nil, nil, tab) end
         if item('Open in background') then App.addTab(data.linkURL, nil, nil, tab) end
+        if item('Open in incognito tab') then App.addTab(data.linkURL, true, nil, tab) end
         if not App.canOpenMoreTabs() then ui.popDisabled() end
       else
         if item('Open in browser app') then
@@ -204,6 +204,8 @@ local function onContextMenu(tab, data)
   end })
 end
 
+local namesUsed = {}
+
 ---@type WebBrowser.Handler.Download
 local function onDownload(tab, data, callback)
   if tab.attributes.awaitDownload and tab.attributes.awaitDownload.url == data.originalURL 
@@ -240,6 +242,17 @@ local function onDownload(tab, data, callback)
 
   if io.dirExists(downloadDirectory) and not io.exists(downloadDirectory..'/'..name) 
       and not Storage.settings.askForDownloadsDestination then
+    -- Downloading two files at once with the same name breaks things, here is a fix
+    if namesUsed[name] then
+      for i = 1, 999 do
+        local cand = name:reggsub('\\d+|$', function (a) return (tonumber(a) or 0) + i end, 1)
+        if not namesUsed[cand] then
+          name = cand
+          break
+        end
+      end
+    end
+    namesUsed[name] = true
     callback(downloadDirectory..'/'..name)
     return
   end

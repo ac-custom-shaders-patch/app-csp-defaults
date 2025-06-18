@@ -4,6 +4,7 @@ local Utils = require('src/Utils')
 local ControlsBasic = require('src/ControlsBasic')
 local ControlsAdvanced = require('src/ControlsAdvanced')
 local Themes = require('src/Themes')
+local ControlsPermissions = require('src/ControlsPermissions')
 
 local function readableSize(bytes)
   if bytes < 1.2 * 1024 then return string.format('%.0f B', bytes) end
@@ -303,6 +304,10 @@ end
 local popup = Utils.uniquePopup()
 
 local function showDownloadsMenu(toggle, position)
+  if ControlsPermissions.isPopupOpened() then
+    -- To make sure not to close auto-download permission
+    return
+  end
   popup(toggle, function ()
     ui.pushFont(ui.Font.Title)
     ui.text('Recent downloads')

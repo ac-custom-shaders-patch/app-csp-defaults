@@ -317,27 +317,30 @@ local function subSystem()
 
   ui.offsetCursorY(20)
   smallHeader('Optimizations')
-  if ui.checkbox('Direct message loop', not Storage.settings.useCEFLoop) then
-    Storage.settings.useCEFLoop = not Storage.settings.useCEFLoop
-    WebBrowser.configure({useCEFLoop = Storage.settings.useCEFLoop})
-  end
-  if ui.itemHovered() then
-    ui.setTooltip('Direct message loop can help to reduce latency and increase overall responsiveness')
-  end
-  if Storage.settings.useCEFLoop ~= WebBrowser.usesCEFLoop() then
-    ui.sameLine(0, 0)
-    ui.offsetCursorX(ui.availableSpaceX() - 100)
-    ui.setNextItemIcon(ui.Icons.Wrench)
-    if ui.button('Restart##loop', vec2(-0.1, 0)) then
-      WebBrowser.restartProcess()
+
+  if WebBrowser.VERSION < 2 then
+    if ui.checkbox('Direct message loop', not Storage.settings.useCEFLoop) then
+      Storage.settings.useCEFLoop = not Storage.settings.useCEFLoop
+      WebBrowser.configure({useCEFLoop = Storage.settings.useCEFLoop})
     end
     if ui.itemHovered() then
-      ui.setTooltip('Backend process requires a restart to change used message loop')
+      ui.setTooltip('Direct message loop can help to reduce latency and increase overall responsiveness')
+    end
+    if Storage.settings.useCEFLoop ~= WebBrowser.usesCEFLoop() then
+      ui.sameLine(0, 0)
+      ui.offsetCursorX(ui.availableSpaceX() - 100)
+      ui.setNextItemIcon(ui.Icons.Wrench)
+      if ui.button('Restart##loop', vec2(-0.1, 0)) then
+        WebBrowser.restartProcess()
+      end
+      if ui.itemHovered() then
+        ui.setTooltip('Backend process requires a restart to change used message loop')
+      end
     end
   end
 
   if WebBrowser.targetFPS then
-    if Storage.settings.useCEFLoop then
+    if WebBrowser.VERSION < 2 and Storage.settings.useCEFLoop then
       ui.pushDisabled()
     end
     ui.alignTextToFramePadding()
@@ -363,10 +366,12 @@ local function subSystem()
         ui.setTooltip('Backend process requires a restart to change target FPS')
       end
     end
-    if Storage.settings.useCEFLoop then
-      ui.popDisabled()
+    if WebBrowser.VERSION < 2 then
+      if Storage.settings.useCEFLoop then
+        ui.popDisabled()
+      end
+      ui.offsetCursorY(12)
     end
-    ui.offsetCursorY(12)
   end
 
   if ui.checkbox('Skip proxy initialization', Storage.settings.skipProxyServer) then
@@ -389,7 +394,7 @@ local function subSystem()
     Storage.settings.developerTools = not Storage.settings.developerTools
   end
 
-  if Storage.settings.developerTools then
+  if Storage.settings.developerTools and WebBrowser.devToolsTabSupported() then
     ui.backupCursor()
     ui.sameLine(140)
     ui.setItemAllowOverlap()
@@ -410,16 +415,25 @@ local function subSystem()
           Utils.openDevTools(tab, 'reuse')
         end
       end
-    end
-    
+    end    
     ui.restoreCursor()
   end
 
-  if ui.checkbox('Safe mode', Storage.settings.safeMode) then
-    Storage.settings.safeMode = not Storage.settings.safeMode
-    for _, v in ipairs(App.tabs) do
-      v:settings().directRender = not Storage.settings.safeMode
-      v:restart()
+  if WebBrowser.VERSION < 2 then
+    if ui.checkbox('Safe mode', Storage.settings.safeMode) then
+      Storage.settings.safeMode = not Storage.settings.safeMode
+      for _, v in ipairs(App.tabs) do
+        v:settings().directRender = not Storage.settings.safeMode
+        v:restart()
+      end
+    end
+  else
+    if ui.checkbox('Software rendering', Storage.settings.softwareRendering) then
+      Storage.settings.softwareRendering = not Storage.settings.softwareRendering
+      for _, v in ipairs(App.tabs) do
+        v:settings().softwareRendering = Storage.settings.softwareRendering
+        v:restart()
+      end
     end
   end
   if ui.itemHovered() then

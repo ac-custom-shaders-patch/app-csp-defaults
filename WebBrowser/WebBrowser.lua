@@ -6,9 +6,11 @@
 
 WebBrowser = require('shared/web/browser')
 
+require('src/CompatibilityPatches')
+
 local Storage = require('src/Storage')
 WebBrowser.configure({
-  useCEFLoop = Storage.settings.useCEFLoop,
+  useCEFLoop = Storage.settings.useCEFLoop, -- compatibility with CEFv1
   skipProxyServer = Storage.settings.skipProxyServer,
   targetFPS = Storage.settings.targetFPS,
 })
@@ -27,6 +29,9 @@ local Hotkeys = require('src/Hotkeys')
 local Pinned = require('src/Pinned')
 local Themes = require('src/Themes')
 local Utils = require('src/Utils')
+
+---For browser in Android Auto
+ac.store('.WebBrowser.searchProvider', Storage.settings.searchProviderID)
 
 ---Last known tab size (helps to skip resizing step for new tabs).
 local lastSize = vec2(320, 240)
@@ -62,7 +67,8 @@ App.registerTabFactory(function(url, attributes, extraTweaks)
       or Storage.settings.contentStyle ~= 0 and rgbm.colors.black or rgbm.colors.white,
     size = lastSize,
     dataKey = not attributes.anonymous and '' or nil,
-    directRender = not Storage.settings.safeMode,
+    directRender = not Storage.settings.safeMode, -- compatibility with CEFv1
+    softwareRendering = Storage.settings.softwareRendering,
     redirectAudio = Storage.settings.fmodAudio,
     attributes = attributes,
   })
@@ -73,9 +79,18 @@ App.registerTabFactory(function(url, attributes, extraTweaks)
   if not attributes.anonymous then
     created:collectFormData(PasswordsManager.onFormData)
   end
+ 
+  -- require('src/_FilterTest')(created)   
   
   return created
     :setColorScheme(Storage.settings.contentStyle == 2 and 'dark-auto' or Storage.settings.contentStyle ~= 0 and 'dark' or 'light')
+    :onPermissionRequest(function (tab, args, callback)
+      if tab ~= App.selectedTab() then
+        callback(nil)
+      else
+        Controls.showPermissionPopup(args.originURL, args.permissions, callback)
+      end
+    end)
     :onDrawEmpty(function (p1, p2, tab, key)
       if key == 'loadError' then
         drawLoadError(p1, p2, tab)
@@ -83,8 +98,6 @@ App.registerTabFactory(function(url, attributes, extraTweaks)
         drawCrash(p1, p2, tab)
       elseif key == 'loading' then
         drawLoading(p1, p2, tab)
-        -- flag `externalBeginFrameEnabled` makes things slow, but stable, this line is used for debugging browser views failing to come online
-        -- ui.drawTextClipped('LOADING!', p1, p2, rgbm.colors.red)
       else
         ui.drawRectFilled(p1, p2, tab:backgroundColor())
       end
@@ -175,14 +188,15 @@ end
 ---@param windowFocused boolean
 local function browserBlock(tab, size, forceActive, windowFocused)
   local keyboardState
-  if tab:loadError() or tab:blank() or tab:crash() then
-    ui.dummy(size)
-  else
+  if tab:interactive() then
     keyboardState = ui.interactiveArea('browser', size)
+  else
+    ui.dummy(size)
   end
 
   local hovered = ui.itemHovered()
-  if App.focusNext == 'browser' and not uis.isMouseLeftKeyDown and not tab.attributes.windowTab or uis.mouseWheel ~= 0 and hovered then
+  if (App.focusNext == 'browser' or Utils.popupJustClosed() and ui.windowFocused(ui.FocusedFlags.RootAndChildWindows)) 
+      and not uis.isMouseLeftKeyDown and not tab.attributes.windowTab or uis.mouseWheel ~= 0 and hovered then
     App.focusNext = nil
     ui.activateItem(ui.getLastID())
   end
@@ -194,9 +208,9 @@ local function browserBlock(tab, size, forceActive, windowFocused)
   local w, h = p2.x - p1.x, p2.y - p1.y
   if w ~= lastSize.x or h ~= lastSize.y then
     lastSize:set(w, h)
-    tab:resize(lastSize)
   end
-
+  tab:resize(lastSize)
+   
   local alive = ui.frameCount() > App.pauseEventsUntil
   local mouseActive
   if pauseMouseInputs <= 0 then
@@ -263,8 +277,6 @@ local function browserBlock(tab, size, forceActive, windowFocused)
   end
 
   if not tab.attributes.windowTab then
-    ac.debug('keyboardState ~= nil', keyboardState ~= nil)
-    ac.debug('not alive', not alive)
     Controls.update(keyboardState ~= nil or not alive)
   end
   if keyboardState then
@@ -336,6 +348,7 @@ local function onExclusiveHUD(mode)
     local tab = App.selectedTab()
     if tab and (tab:fullscreen() or tab.attributes.fullscreen) then
       ui.setCursor(0)
+      Controls.fullscreenBarLayout()
       ui.childWindow('##tab', ui.windowSize(), function ()      
         browserBlock(tab, ui.availableSpace(), false, true)
       end)
@@ -362,7 +375,7 @@ local function onExclusiveHUD(mode)
           end
         end)
       end
-      return true
+      return 'finalize'
     end
   end
 end
@@ -436,12 +449,6 @@ function script.windowMain()
     -- Actual browser: interactive area to capture button presses and get focused/unfocused behaviour:
     local devTools = tab.attributes.devTools ---@type WebBrowser?
     if devTools and Storage.settings.developerToolsDock ~= 1 then
-      -- if ui.button('More') then
-      --   local devToolsForDevTools = devTools:devTools()
-      --   ui.popup(function () drawDevToolsTab(devToolsForDevTools, false, ui.availableSpace()) end, 
-      --     { title = 'Developerer tools', padding = vec2(), size = { initial = vec2(640, 480) } })
-      -- end
-
       local space = ui.availableSpace()
       local forceActive = ui.itemActive()
       local focus = (tab.attributes.developerToolsFocused or 0) < ui.frameCount()
@@ -518,7 +525,7 @@ end)
 tryUnloadLater()
 
 os.onURL('^(https?)://', function (url)
-  if Storage.settings.interceptURLs then
+  if Storage.settings.interceptURLs and not ac.getSim().isInMainMenu then
     ac.setWindowOpen('main', true)
     App.addAndSelectTab(url, nil, nil, nil)
     return true
