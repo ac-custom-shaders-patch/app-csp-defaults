@@ -654,7 +654,7 @@ local function commentsBlock()
   discussingComments[item.setupID] = comment
 end
 
-local function windowGeneric()
+local function windowGeneric(paddingDown)
   if discussingItem and not v2 then
     if ui.button('    Back') then
       discussingItem = nil
@@ -799,7 +799,7 @@ local function windowGeneric()
   end
   ui.popFont()
 
-  ui.childWindow('scroll', ui.availableSpace():sub(vec2(0, 40)), function ()
+  ui.childWindow('scroll', ui.availableSpace():sub(vec2(0, paddingDown or 40)), function ()
     ui.offsetCursorY(8)
     if #setups == 0 then
       ui.textDisabled('No fitting setups available yet.')
@@ -1045,8 +1045,14 @@ function script.windowMain()
 end
 
 function script.windowSetup()
-  ui.pushFont(ui.Font.Title)
-  ui.textAligned('Setup Exchange', vec2(0.5, 0.5), vec2(ui.availableSpaceX(), 34))
-  ui.popFont()
-  windowGeneric()
+  if ui.windowTitle and string.find(ui.windowTitle(), 'Setups Exchange###', 1, true) == 1 then
+    -- A separate window in setup window
+    ui.pushFont(ui.Font.Title)
+    ui.textAligned('Setup Exchange', vec2(0.5, 0.5), vec2(ui.availableSpaceX(), 34))
+    ui.popFont()
+    windowGeneric()
+  else
+    -- Setup window included into new main menu
+    windowGeneric()
+  end
 end
