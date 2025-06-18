@@ -1,5 +1,5 @@
 web.get(require('Config').endpoint..'/count?carID='..string.urlEncode(ac.getCarID(0)), function (err, response)
-  local c = not err and tonumber(JSON.parse(response.body).count)
+  local c = not err and response.status < 400 and tonumber(JSON.parse(response.body).count)
   if c then
     ac.setWindowIcon('main', ui.ExtraCanvas(64, 4):update(function (dt)
       ui.beginPremultipliedAlphaTexture()
