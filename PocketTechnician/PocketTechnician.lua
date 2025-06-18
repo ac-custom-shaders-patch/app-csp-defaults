@@ -13,7 +13,7 @@ local function arrangeTabs()
   ---@param name string
   ---@param hasRightCounterpart boolean
   local function getItemName(name, hasRightCounterpart)
-    local ret = name:replace('_', ' '):lower():reggsub('\\b[a-z](?:\\w\\b)?', function (x) return x:upper() end)
+    local ret = name:replace('_', ' '):lower():reggsub('\\b(?:(?:ffb|arb)\\b|[a-z](?:\\w\\b)?)', function (x) return x:upper() end)
     if hasRightCounterpart then
       if ret:regfind(' [LR]F$') then ret = ret:sub(1, #ret - 2)..'Front' end
       if ret:regfind(' [LR]R$') then ret = ret:sub(1, #ret - 2)..'Rear' end
