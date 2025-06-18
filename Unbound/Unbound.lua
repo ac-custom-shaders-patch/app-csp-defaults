@@ -157,6 +157,7 @@ ac.onRelease(releaseHeld)
 
 local colTurningLights = rgbm(0.5, 1, 0.5, 1)
 local colHazards = rgbm(1, 0.5, 0.5, 1)
+local btnAutofill = vec2(-0.1, 0)
 
 local function blockCarInstruments()
   local w2 = (ui.availableSpaceX() - 4) / 2
@@ -276,7 +277,6 @@ end
 
 local steerIcon, steerAngle = ui.ExtraCanvas(32), math.huge
 local pedalLM, pedalLX, pedalNeutrals = vec2(), vec2(), {}
-local btnAutofill = vec2(-0.1, 0)
 
 ac.onSessionStart(function (sessionIndex, restarted)
   pedalNeutrals = {}
