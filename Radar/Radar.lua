@@ -34,6 +34,12 @@ local function getCarTexture(car)
   return found
 end
 
+if ac.onCarColorChanged then
+  ac.onCarColorChanged(-1, function (carIndex)
+    carTextures[carIndex] = nil
+  end)
+end
+
 local drawMesh_track = { mesh = ac.SimpleMesh.trackLine(0, 0, 1), values = { gSize = vec2() }, shader = 'res/track.fx' }
 local drawMesh_pits = { mesh = ac.SimpleMesh.trackLine(1, 0, 4), values = { gSize = vec2() }, shader = 'res/track.fx' }
 
