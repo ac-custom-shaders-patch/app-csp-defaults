@@ -313,13 +313,65 @@ function script.windowMain(dt)
             else
               for i, v in ipairs(prevSectors) do
                 ui.pushID(i)
-                if ui.selectable(v.name, sectorData == v) then
+                if ui.selectable(v.name, sectorData == v, 0, vec2(200, ui.frameHeight())) then
                   resetState()
                   sectorData = v
                 end
                 if ui.itemHovered() then
                   ui.setTooltip('Best time: %s\nTotal runs: %s' % {ac.lapTimeToString(v.bestTime.time), v.totalRuns})
                 end
+
+                ui.sameLine(0, 8)
+                if ui.iconButton(ui.Icons.Edit, vec2(ui.frameHeight(), ui.frameHeight())) then
+                  ui.modalPrompt('Rename Sector', 'Enter a new name for the sector:', v.name, 'Save', 'Cancel',
+                    ui.Icons.Save, ui.Icons.Cancel,
+                    function(newName)
+                      if newName and newName:trim() ~= '' then
+                        local oldFilename = v.filename
+                        local sanitizedName = newName:trim():gsub('[\\/:*?"<>|]', '_')
+                        local newFilename = dir .. '\\' .. sanitizedName .. '.lon'
+
+                        if oldFilename:lower() == newFilename:lower() and v.name ~= newName:trim() then
+                          v.name = newName:trim()
+                          v:save()
+                          ui.toast(ui.Icons.Save, 'Sector name updated.')
+                        elseif io.exists(newFilename) then
+                          ui.toast(ui.Icons.Error, 'A sector with that name already exists.')
+                        else
+                          if io.move(oldFilename, newFilename) then
+                            v.name = newName:trim()
+                            v.filename = newFilename
+                            v:save()
+                            ui.toast(ui.Icons.Save, 'Sector renamed successfully.')
+                          else
+                            ui.toast(ui.Icons.Error, 'Failed to rename the sector file.')
+                          end
+                        end
+                      end
+                    end)
+                end
+
+                ui.sameLine(0, 4)
+                if ui.iconButton(ui.Icons.Delete, vec2(ui.frameHeight(), ui.frameHeight())) then
+                  ui.modalPopup('Delete Sector', ('Are you sure you want to delete "%s"?'):format(v.name),
+                    'Delete', 'Cancel', ui.Icons.Delete, ui.Icons.Cancel,
+                    function(confirmed)
+                      if confirmed then
+                        local filenameToDelete = v.filename
+                        ac.log('Attempting to delete: "' .. tostring(filenameToDelete) .. '"')
+                        if sectorData == v then
+                          resetState()
+                        end
+                        table.removeItem(prevSectors, v)
+                        if io.deleteFile(filenameToDelete) then
+                          ui.toast(ui.Icons.Delete, 'Sector deleted.')
+                        else
+                          ui.toast(ui.Icons.Error, 'Failed to delete sector file.')
+                        end
+                      end
+                    end)
+                end
+
                 ui.popID()
               end
             end

@@ -16,6 +16,9 @@ local SectorRecord = class('SectorRecord')
 function SectorRecord.allocate(filename, state, startingPoint, finishingPoint)
   if not state then
     local data = stringify.binary.tryParse(io.load(filename))
+    if data then
+      data.filename = filename
+    end
     return data or {}
   end
   local name1 = ac.getTrackSectorName(math.lerp(startingPoint, finishingPoint, 0.25))
