@@ -5,7 +5,6 @@
 ]]
 
 WebBrowser = require('shared/web/browser')
-
 require('src/CompatibilityPatches')
 
 local Storage = require('src/Storage')

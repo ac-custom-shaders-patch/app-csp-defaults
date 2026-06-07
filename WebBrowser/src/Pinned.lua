@@ -52,10 +52,19 @@ local function getIconFilename(app)
   return string.format('%s/pinned_icon_%s.png', ac.getFolder(ac.FolderID.ScriptConfig), app.id)
 end
 
+local function updateLazyFlag()
+  if ac.overrideAppLazyFlag then
+    ac.overrideAppLazyFlag(#apps == 0 and 'PARTIAL' or 'NONE')
+  end
+end
+
+setTimeout(updateLazyFlag, 1)
+
 ---@param app PinnedApp
 ---@param toast boolean
 local function removeApp(app, toast)
   apps:remove(app)
+  updateLazyFlag()
 
   if app.release then
     app.release()
@@ -70,6 +79,7 @@ local function removeApp(app, toast)
   if toast then
     ui.toast(ui.Icons.Trash, 'Removed “%s”' % app.title, function ()
       apps:restore(app)
+      updateLazyFlag()
       registerApp(app, false)
     end)
   end
@@ -211,6 +221,7 @@ local function pinTab(app, icon)
     end
   end
   apps:update(app)
+  updateLazyFlag()
   registerApp(app, false)
 end
 
@@ -331,6 +342,7 @@ local function appEditDialog(app, tab, icon, editedCallback)
         end
         backup = nil
         apps:update(app)
+        updateLazyFlag()
       else
         local opened = app.release and app.release('opened')
         backup = nil

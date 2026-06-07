@@ -1,6 +1,7 @@
 // Simplest server for exchanging setups with comments and likes. Uses uniquely generated on client side user keys for user identification (adding sign-in form with passwords 
 // seems a bit overkilly at this point). Stores data in sqlite database.
 const withModeration = false; // If needed, there is a thing for moderators to be able to remove content and ban people, moderator privileges are granted through console.
+const fs = require('fs');
 
 const AppCfg = {
   name: 'Setup Exchange',
@@ -19,7 +20,7 @@ if (process.env.EXCHANGE_MODE) {
     });
   } else if (process.env.EXCHANGE_MODE.endsWith('.json')) {
     AppCfg.port = null;
-    Object.assign(AppCfg, JSON.parse('' + require('fs').readFileSync(process.env.EXCHANGE_MODE)));
+    Object.assign(AppCfg, JSON.parse('' + fs.readFileSync(process.env.EXCHANGE_MODE)));
   } else {
     console.warn(`Unknown server mode: ${process.env.EXCHANGE_MODE}`)
   }
@@ -380,6 +381,12 @@ const router = (() => {
     }
     return new Response(compressed, headers(found.callback.flags & PARTIAL_SERVE ? totalCount[0] : null));
   }
+
+  if (typeof AppCfg.port.main !== 'number') {
+    try { fs.unlinkSync(AppCfg.port.main); } catch (e){}
+    if (AppCfg.port.alt) try { fs.unlinkSync(AppCfg.port.alt); } catch (e){}
+  }
+
   Bun.serve(Object.assign({
     async fetch(req) {
       responseTask.start();
@@ -395,8 +402,8 @@ const router = (() => {
   if (AppCfg.port.alt) {
     process.nextTick(() => {
       try {
-        require('fs').rmSync(AppCfg.port.alt);
-        require('fs').linkSync(AppCfg.port.main, AppCfg.port.alt);
+        fs.rmSync(AppCfg.port.alt);
+        fs.linkSync(AppCfg.port.main, AppCfg.port.alt);
       } catch {}
     });
   }

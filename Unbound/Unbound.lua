@@ -85,7 +85,7 @@ local function bindingInfoGen(section)
   if j >= 0 then
     local n = controlsConfig:get('CONTROLLERS', 'CON'..j, 'Unknown device')
     local d = controlsConfig:get(section, 'BUTTON', -1)
-    if d >= 0 and (tonumber(x) or 1) > 0 then
+    if d >= 0 then
       -- if #n > 28 then n = n:sub(1, 27)..'…' end
       local m = controlsConfig:get(section, 'BUTTON_MODIFICATOR', -1)
       if m >= 0 then
@@ -259,7 +259,7 @@ local function blockCarInstruments()
     if not a then ui.pushDisabled() end
     local p = ac.accessExtraSwitchParams(i - 1)
     if anyExtraHint and not t then ui.pushStyleColor(ui.StyleColor.Text, rgbm.colors.gray) end
-    if ui.button(string.char(('A'):byte(1) + i - 1), vec2(w6, 0), BTN_FN(isExtraPressed(i))) and not p.holdMode then
+    if ui.button(string.char(('A'):byte(1) + i - 1), vec2(w6, 0), BTN_FN(isExtraPressed(i))) and (not p or not p.holdMode) then
       ac.simulateCustomHotkeyPress('__EXT_LIGHT_'..string.char(('A'):byte(1) + i - 1))
     end
     if p and p.holdMode and ui.itemActive() then
@@ -374,7 +374,7 @@ local function blockCarDrive()
 
   ui.pushFont(ui.Font.Title)
   local c = ui.getCursor()
-  ui.textAligned(ac.getCarGearLabel(0), 0.5, vec2(56, 44))
+  ui.textAligned(ac.getCarGearLabel(0) or '?', 0.5, vec2(56, 44))
   -- ui.pathLineTo(vec2(ui.itemRectMin().x, ui.itemRectMax().y))
   ui.pathArcTo(c + vec2(28, 23), 16, -2.4 - math.pi / 2, 2.4 - math.pi / 2, 20)
   ui.pathStroke(rgbm.colors.gray, false, 1)
@@ -596,7 +596,7 @@ local function blockView()
   local w3 = (ui.availableSpaceX() - 8) / 3
 
   ui.setNextItemIcon(ui.Icons.VideoCamera)
-  if ui.button('Camera', vec2(-22 * 3 - 4 * 3, 0), BTN_F0) then
+  if ui.button('Camera', vec2(-22 * 3 - 4 * 3, 0), BTN_F0) and controls then
     if controls:active() then
       controls.changeCamera = true
     else
@@ -613,7 +613,8 @@ local function blockView()
 
   -- ui.popDisabled()
 
-  if not controls:active() then ui.pushDisabled() end
+  local disabled = not controls or not controls:active()
+  if disabled then ui.pushDisabled() end
   ui.sameLine(0, 4)
   ui.iconButton(ui.Icons.ArrowLeft, 22, 4, true)
   bindingInfoTooltip('GLANCELEFT', 'Hold to glance left')
@@ -626,7 +627,7 @@ local function blockView()
   ui.iconButton(ui.Icons.ArrowRight, 22, 4, true)
   bindingInfoTooltip('GLANCERIGHT', 'Hold to glance right')
   controls.lookRight = ui.itemActive()
-  if not controls:active() then ui.popDisabled() end
+  if disabled then ui.popDisabled() end
 
   if sim.cameraMode ~= ac.CameraMode.Cockpit and sim.cameraMode ~= ac.CameraMode.Drivable then
     ui.popDisabled()
@@ -661,7 +662,7 @@ local function blockView()
   bindingInfoTooltip('F6$', 'A few custom preconfigured cameras positioned relative to the car')
   if sim.isVRConnected then
     ui.button('Reset VR', btnAutofill)
-    if ui.itemActive() then ac.resetVRPose() end
+    if ui.itemActive() then ac.recenterVR() end
     bindingInfoTooltip('Ctrl+Space$', 'Reset VR orientation')
   end
   ui.popStyleVar()
@@ -711,7 +712,7 @@ local function blockReplay()
   bindingInfoTooltip('NEXT_LAP!', 'Rewind to the next lap')
 end
 
-local autopilot = 0
+local speedLimit = 0
 
 local function blockMiscellaneous()
   local w2 = (ui.availableSpaceX() - 4) / 2
@@ -762,13 +763,25 @@ local function blockMiscellaneous()
   bindingInfoTooltip('AUTO_SHIFTER!', 'Shift gears automatically (won’t be as efficient as manual shifting)')
   if not sim.isOnlineRace then
     ui.sameLine(0, 4)
-    ui.setNextItemWidth(-0.1)
-    if ui.checkbox('AI', car.isAIControlled and autopilot == 0) then
-      if autopilot ~= 0 then
-        autopilot = 0
-        physics.setAITopSpeed(0, math.huge)
+    ui.setNextItemWidth(-20)
+    if ui.checkbox('AI', car.isAIControlled) then
+      ac.trySimKeyPressCommand('Activate AI')
+      setTimeout(function ()
+        physics.setAITopSpeed(0, speedLimit == 0 and math.huge or speedLimit)
+      end, 0.1)
+    end
+    if car.isAIControlled then
+      ui.sameLine(0, 0)
+      if ui.button('', vec2(-0.1, 0)) then
+        ui.popup(function ()
+          ui.setNextItemWidth(200)
+          speedLimit = ui.slider('##ai', speedLimit, 0, 300, speedLimit == 0 and 'Limit: ∞' or 'Limit: %.0f km/h')
+          if ui.itemEdited() then
+            physics.setAITopSpeed(0, speedLimit == 0 and math.huge or speedLimit)
+          end
+        end, { position = vec2(ui.itemRectMin().x, ui.itemRectMax().y) + ui.windowPos() })
       end
-      ac.trySimKeyPressCommand('Activate AI') 
+      ui.addIcon(ui.Icons.Ellipsis, 9, 0.5, nil, 0)
     end
     bindingInfoTooltip('ACTIVATE_AI!', 'Use AI to drive the car (deactivating stops any inputs, restart the session to get the control back)')
   end
@@ -779,7 +792,7 @@ end
 function script.windowMain(dt)
   local f = false
   local s = ui.getCursorY()
-  local notAvailable = not car.isUserControlled and autopilot == 0 or sim.isReplayActive
+  local notAvailable = not car.isUserControlled or sim.isReplayActive
   if notAvailable then
     ui.pushDisabled()
   end
@@ -848,22 +861,6 @@ function script.windowMain(dt)
       end
     end
   end
-
-  -- if ac.isCarResetAllowed() then
-  --   ui.offsetCursorY(12)
-  --   ui.header('Autopilot')
-  --   ui.setNextItemWidth(-0.1  )
-  --   autopilot = ui.slider('##ai', autopilot, 0, 300, 'Limit: %.0f km/h')
-  --   if ui.itemEdited() then
-  --     physics.setAITopSpeed(0, autopilot == 0 and math.huge or autopilot)
-  --     physics.setCarAutopilot(autopilot > 0, false)
-  --   elseif ui.itemActive() and autopilot == 0 then
-  --     physics.forceUserBrakesFor(0.1, 1)
-  --   elseif not car.isAIControlled then
-  --     autopilot = 0
-  --     physics.setAITopSpeed(0, math.huge)
-  --   end
-  -- end
 
   if not f then
     ui.setExtraContentMark(true)

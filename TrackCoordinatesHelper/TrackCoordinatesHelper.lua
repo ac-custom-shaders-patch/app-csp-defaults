@@ -46,12 +46,13 @@ local function computeTimezone(point)
   end
   if not timezonesLoading[key] then
     timezonesLoading[key] = true
-    local url = 'https://api.geotimezone.com/public/timezone?latitude=%s&longitude=%s' % {point.lat, point.lng}
+    local url = 'https://timeapi.io/api/v1/timezone/coordinate?latitude=%s&longitude=%s' % {point.lat, point.lng}
     print('Loading timezone: %s, %s' % {point.lng, point.lat})
     web.get(url, function (err, response)
       local data = not err and response and JSON.parse(response.body)
-      if data and data.iana_timezone then
-        timezonesStorage:set(key, data.iana_timezone)
+      print(data)
+      if data and data.timezone then
+        timezonesStorage:set(key, data.timezone)
       end
     end)
   end
@@ -112,19 +113,18 @@ local function computeValues(points, geoYRef, except)
 end
 
 local WebBrowser = require('shared/web/browser')
-local tab = WebBrowser({
-    spoofGeolocation = true,
-    injectJavaScript = 'Number.prototype.toFixed=function(){return this.toString()};AC.onReceive("show-search", v => document.body.classList.toggle("show-search", v))'
-  })
+
+-- Ideally, I’d use Google Maps API for a nice control, but I’m a bit sick of them constantly breaking
+-- things, so instead I’m just going to use regular Google Maps and read/write coordinates from URL.
+-- Also, originally, there was some logic injecting CSS and JS to clean things up a bit, but now Google Maps
+-- use some special UI framework so that I can’t really target things reliably, so instead I’m just going
+-- to crop unnecessary elements when drawing tab.
+local tab = WebBrowser({ spoofGeolocation = true })
   :blockURLs(WebBrowser.adsFilter())
   :onDrawEmpty('message')
   :setZoom(-2)
   :setPixelDensity(1.2)
   :setMobileMode('landscape')
-  :injectStyle({ ['google\\.com/maps'] = 'body:not(.show-search) #omnibox-container,#vasquette,#settings,#layer-switcher,.scene-footer-container,.app-horizontal-widget-holder,#google-hats-survey,#watermark{display:none}' })
-  :onLoadEnd(function (browser, data)    
-    browser:sendAsync('show-search', state.showSearch)
-  end)
 
 local function createMapView(size)
   local ratio = size.y / size.x
@@ -239,6 +239,7 @@ function script.windowMain(dt)
   ui.text(#points > 0
     and 'Align more points (the further away, the better the results, more points smooth out errors):'
     or 'Align the same point on both Google Maps and in-game map:')
+  ui.offsetCursorY(8)
 
   local newMapSize = vec2(math.round((ui.availableSpaceX() - 4) / 2), ui.availableSpaceY() - 162)
   if newMapSize ~= mapSize then
@@ -247,8 +248,11 @@ function script.windowMain(dt)
   end
 
   local p1 = ui.getCursor()
-  tab:control(mapSize)
-  drawCrosshair(p1, p1 + mapSize)
+  ui.childWindow('mapClip', mapSize, function ()
+    ui.setCursor(state.showSearch and 0 or -200)
+    tab:control(ui.windowSize() + (state.showSearch and 0 or 400))
+    drawCrosshair(0, mapSize)
+  end)
 
   ui.sameLine(0, 4)
   p1 = ui.getCursor()
@@ -381,6 +385,9 @@ function script.windowMain(dt)
         tab:navigate('https://www.google.com/maps/@%s,%s,18z/data=!3m1!1e3' % {baseCoords.lat, baseCoords.lng})
       end
       ui.text('Camera position is passed as geolocation.')
+      if ui.itemHovered() then
+        ui.setTooltip('Ask Google Maps to show your location and it should, ideally, get your camera position')
+      end
       ui.popFont()
     end
     ui.endGroup()
