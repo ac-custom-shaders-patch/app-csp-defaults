@@ -198,8 +198,8 @@ local function blockCarInstruments()
   else
     ui.setNextItemWidth(lightsW2 and w2 or -0.1)
     if ui.checkbox('Lights', car.headlightsActive) then ac.setHeadlights(not car.headlightsActive) end
-    bindingInfoTooltip('ACTION_HEADLIGHTS', car.headlightsAreHeadlights and 'Lights on this car act are used for a different role'
-      or 'Headlights can help in subpar lighting conditions')
+    bindingInfoTooltip('ACTION_HEADLIGHTS', car.headlightsAreHeadlights and 'Headlights can help in subpar lighting conditions'
+      or 'Lights on this car act are used for a different role')
     if lightsW2 then ui.sameLine(0, 4) end
   end
 
