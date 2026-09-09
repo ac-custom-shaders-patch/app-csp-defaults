@@ -1,18 +1,12 @@
-WINDOWS = ac.storage({
-	showDeveloperWindow = false,
-	showSettingsWindow = false,
+local settings = ac.storage({
+        showSetupMenuApp = true,
+        showIconLegend = true,
+        saveAllControlsToPreset = false,
+        disableForcedBinds = false,
+        disableExtCarControlProfiles = false,
+        disableBindDeactivation = false,
+        developerMode = false,
+        showAppVersion = true,
 })
-WINDOWS.showDeveloperWindow = false
-WINDOWS.showSettingsWindow = false
 
-SETTINGS = ac.storage({
-	showSetupMenuApp = true,
-	showIconLegend = true,
-	saveAllControlsToPreset = false,
-	disableForcedBinds = false,
-	disableExtCarControlProfiles = false,
-	disableBindDeactivation = false,
-
-	developerMode = false,
-	showAppVersion = true,
-})
+return settings
